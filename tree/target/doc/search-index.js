@@ -1,0 +1,4 @@
+var searchIndex = JSON.parse('{\
+"tree":{"doc":"Distributed Octrees in Rust","t":[0,0,5,5,5,5],"n":["morton","tree","find_children","find_level","find_parent","find_siblings"],"q":["tree","","tree::morton","","",""],"d":["Functionality to perform operations on Morton keys.","Functionality to create octrees in parallel.","Find the children of a given Morton key.","Returns the final 4 bits of a Morton key corresponding to …","Returns the parent key of a Morton key.","Find siblings of a given Morton key."],"i":[0,0,0,0,0,0],"f":[null,null,[[["u64",15]],[["u64",15],["vec",3,["u64"]]]],[[["u64",15]],["u64",15]],[[["u64",15]],["u64",15]],[[["u64",15]],[["u64",15],["vec",3,["u64"]]]]],"p":[]}\
+}');
+if (window.initSearch) {window.initSearch(searchIndex)};
