@@ -1,5 +1,4 @@
 use rand::{Rng};
-use hdf5::*;
 
 use crate::morton::{Point, Points};
 

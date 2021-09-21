@@ -1,3 +1,0 @@
-(function() {var implementors = {};
-implementors["tree"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.55.0/core/marker/trait.Sync.html\" title=\"trait core::marker::Sync\">Sync</a> for <a class=\"struct\" href=\"tree/morton/struct.Key.html\" title=\"struct tree::morton::Key\">Key</a>","synthetic":true,"types":["tree::morton::Key"]}];
-if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

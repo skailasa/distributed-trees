@@ -118,24 +118,25 @@ const BYTE_MASK: usize = 0x7FFF;
 const BYTE_DISPLACEMENT: usize = 8;
 
 type AnchorType = u64;
+/// Anchor representation of a Morton key, as described in Sundar et al.
 #[derive(Clone, Copy, Debug)]
 pub struct Anchor(pub AnchorType, pub AnchorType, pub AnchorType, pub AnchorType);
 pub type Anchors = Vec<Anchor>;
 
 type PointType = f64;
-/// Cartesian physical coordinates (x, y, z) of a given point
+/// Cartesian physical coordinates (x, y, z) of a given point.
 #[derive(Clone, Copy, Debug)]
 pub struct Point(pub PointType, pub PointType, pub PointType);
 pub type Points = Vec<Point>;
 
 type KeyType = u64;
-/// 20 bits each for (x, y, z) index of node in Octree and
-/// 4 bits for level data
+/// 20 bits each for (x, y, z) indices from anchor representation of Morton key,
+/// 4 bits for level data.
 #[derive(Clone, Copy, Debug)]
 pub struct Key(pub KeyType);
 pub type Keys = Vec<Key>;
 
-/// Implementation of $\left \lfloor {\log_2(.)} \right \rfloor$
+/// Implementation of $\left \lfloor {\log_2(.)} \right \rfloor$.
 pub fn log(&x: &u64) -> Option<i64> {
 
     match x {
@@ -213,7 +214,7 @@ pub fn extract(key: &Key, comp: char) -> KeyType {
 /// let b = Key(0b1011111);
 /// assert_eq!(a, b);
 /// ```
-pub fn equal(a: &Key, b: &Key) -> Option<bool> {
+fn equal(a: &Key, b: &Key) -> Option<bool> {
     let result = a.0 == b.0;
     Some(result)
 }
@@ -256,7 +257,7 @@ fn _less_than(a: &Key, b: &Key) -> Option<bool> {
 ///
 /// assert_eq!(result.unwrap(), true);
 /// ```
-pub fn less_than(a: &Key, b: &Key) -> Option<bool> {
+fn less_than(a: &Key, b: &Key) -> Option<bool> {
 
     let al = find_level(a);
     let bl = find_level(b);
