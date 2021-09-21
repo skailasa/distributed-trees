@@ -7,51 +7,91 @@ type KeyType = u64;
 pub struct Key(pub KeyType);
 pub type Keys = Vec<Key>;
 
+/// Implementation of $\left \lfloor {\log_2(.)} \right \rfloor $
+pub fn log(&x: &u64) -> Option<i64> {
 
-/// Extract components of Morton key
-pub fn extract(a: &Key, c: char) -> KeyType {
+    match x {
+        0 => None,
+        _ => {
 
-    let res = 1 << 20;
+            let mut _x = x.clone();
+            let mut r : i64 = 0;
 
-    let mask = match c {
-        'x' => 0b001001001001001001001001001001001001001001001001,
-        'y' => 0b010010010010010010010010010010010010010010010010,
-        'z' => 0b100100100100100100100100100100100100100100100100,
-        _ => panic!("Must select one of 'x', 'y' and 'z' for component extraction ")
-    };
+            while _x > 1 {
+                _x = _x >> 1;
+                r += 1;
+            }
 
-    let mut masked = mask & a.0;
-
-    for n in 19..=0 {
-
-        // Extract last 3 bits
-        let curr = masked & 0b111;
-
-        // Add appropriate bit to the result
-        match c {
-            'x' => res | ((curr & 1) << n),
-            'y' => res | (((curr >> 1) & 1) << n),
-            'z' => res | (((curr >> 2) & 1) << n),
-            _ => panic!("Must select one of 'x', 'y' and 'z' for component extraction ")
-        };
-
-        // Shift down mask
-        masked = masked >> 3;
-
+            Some(r)
+        }
     }
-
-    // Return 20 bits of component
-    res & ((1 << 20) - 1)
 }
 
 
-/// Test Morton keys for equality
+/// Extract 'x', 'y' or 'z' components of Morton key.
+///
+/// # Examples
+///
+/// ```
+/// use tree::morton::{extract, Key};
+///
+/// let key = Key(0b0100100101111);
+/// let e = extract(&key, 'y');
+/// assert_eq!(e, 0b111);
+/// ```
+pub fn extract(key: &Key, comp: char) -> KeyType {
+
+    let mut res = 0;
+
+    let mask = match comp {
+        'x' => 0b001001001001001001001001001001001001001001001001001001001001001,
+        'y' => 0b010010010010010010010010010010010010010010010010010010010010010,
+        'z' => 0b100100100100100100100100100100100100100100100100100100100100100,
+        _ => panic!("Must select one of 'x', 'y' and 'z' for component extraction ")
+    };
+
+    // Remove level bits and apply mask
+    let masked = mask & (key.0 >> 4);
+
+    for n in (0..20).rev() {
+
+        // Extract 3 bits in leading order
+        let curr = match n {
+            0 => masked & 0b111,
+            _ => ((masked & (0b111 << 3*n))) >> (3*n)
+        };
+
+        res = match comp {
+            'x' => res | (curr & 1),
+            'y' => res | ((curr >> 1) & 1),
+            'z' => res | ((curr >> 2) & 1),
+            _ => panic!("Must select one of 'x', 'y' and 'z' for component extraction ")
+        };
+        // Add appropriate bit to the result
+        if n > 0 {
+            res = res << 1;
+        };
+    }
+    res
+}
+
+
+/// Test Morton keys for equality.
+///
+/// ```
+/// use tree::morton::{Key, equal};
+///
+/// let a = Key(0b1011111);
+/// let b = Key(0b1011111);
+/// assert_eq!(a, b);
+/// ```
 pub fn equal(a: &Key, b: &Key) -> Option<bool> {
     let result = a.0 == b.0;
     Some(result)
 }
 
 
+/// Subroutine of algorithm 12 in Sundar et. al.
 fn _less_than(a: &Key, b: &Key) -> Option<bool> {
 
     let ax = extract(a, 'x');
@@ -75,11 +115,23 @@ fn _less_than(a: &Key, b: &Key) -> Option<bool> {
     }
 }
 
-/// Test Morton keys for relative size.
+/// Test Morton keys for relative size using algorithm 12
+/// in Sundar et. al.
+///
+/// # Example
+/// ```
+/// use tree::morton::{Key, less_than};
+///
+/// let a = Key(0b1010001);
+/// let b = Key(0b1010010);
+/// let result = less_than(&a, &b);
+///
+/// assert_eq!(result.unwrap(), true);
+/// ```
 pub fn less_than(a: &Key, b: &Key) -> Option<bool> {
 
-    let al = a.0 & 15;
-    let bl = a.0 & 15;
+    let al = a.0 & 0b1111;
+    let bl = b.0 & 0b1111;
 
     if al == bl {
         _less_than(a, b)
@@ -118,25 +170,7 @@ impl PartialEq for Key {
 impl Eq for Key {}
 
 
-/// \floor{log_2(.)}
-pub fn log(&x: &u64) -> Option<i64> {
 
-    match x {
-        0 => None,
-        _ => {
-
-            let mut _x = x.clone();
-            let mut r : i64 = 0;
-
-            while _x > 1 {
-                _x = _x >> 1;
-                r += 1;
-            }
-
-            Some(r)
-        }
-    }
-}
 
 /// Returns the final 4 bits of a Morton key corresponding
 /// to the octree level of a node.

@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["tree"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.55.0/core/cmp/trait.PartialOrd.html\" title=\"trait core::cmp::PartialOrd\">PartialOrd</a>&lt;<a class=\"struct\" href=\"tree/morton/struct.Key.html\" title=\"struct tree::morton::Key\">Key</a>&gt; for <a class=\"struct\" href=\"tree/morton/struct.Key.html\" title=\"struct tree::morton::Key\">Key</a>","synthetic":false,"types":["tree::morton::Key"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

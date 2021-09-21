@@ -4,6 +4,17 @@ Distributed Octrees in Rust, construction inspired by [1, 2].
 
 # Representation of Nodes
 
+
+# Build
+
+## Documentation
+
+We use Katex for parsing Latex from doc strings, to build:
+
+```rust
+RUSTDOCFLAGS="--html-in-header src/docs-header.html" cargo doc
+```
+
 Node index coordinates are represented using bit-interleaved __Morton Keys__ [1], chosen for their spatial locality properties.
 
 We chose to represent Morton keys as 64 bit integers, and the entire tree __linearly__ as a vector of 64 bit integers.
