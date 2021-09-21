@@ -4,14 +4,6 @@ Distributed Octrees in Rust, construction inspired by [1, 2].
 
 # Representation of Nodes
 
-## Install
-
-Install HDF5 on Ubuntu
-
-```rust
-sudo apt-get install libhdf5-serial-dev
-```
-
 # Build
 
 ## Documentation
