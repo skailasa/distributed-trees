@@ -206,14 +206,6 @@ pub fn extract(key: &Key, comp: char) -> KeyType {
 
 
 /// Test Morton keys for equality.
-///
-/// ```
-/// use tree::morton::{Key, equal};
-///
-/// let a = Key(0b1011111);
-/// let b = Key(0b1011111);
-/// assert_eq!(a, b);
-/// ```
 fn equal(a: &Key, b: &Key) -> Option<bool> {
     let result = a.0 == b.0;
     Some(result)
@@ -246,17 +238,6 @@ fn _less_than(a: &Key, b: &Key) -> Option<bool> {
 
 /// Test Morton keys for relative size using algorithm 12
 /// in Sundar et. al.
-///
-/// # Example
-/// ```
-/// use tree::morton::{Key, less_than};
-///
-/// let a = Key(0b1010001);
-/// let b = Key(0b1010010);
-/// let result = less_than(&a, &b);
-///
-/// assert_eq!(result.unwrap(), true);
-/// ```
 fn less_than(a: &Key, b: &Key) -> Option<bool> {
 
     let al = find_level(a);
