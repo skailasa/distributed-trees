@@ -1,23 +1,63 @@
-// use tree::data::{random};
-// use tree::morton::{encode_anchor, point_to_anchor, Anchor, Point, encode_points, encode_point};
+use std::time::{SystemTime};
+
+use itertools::Itertools;
+use mpi::traits::*;
+
+use tree::data::{random};
+use tree::morton::{
+    Keys,
+    Point,
+    encode_points,
+};
+
+use tree::tree::{
+    distribute_leaves,
+    parallel_morton_sort,
+};
 
 
 fn main() {
-    // let p = random(10);
-    // println!("{:?}", p);
 
-    // let points = random(10);
-    // let level = 1;
-    // let x0 = Point(0.5, 0.5, 0.5);
-    // let r0 = 0.5;
+    // 0.i Encode test points
+    let points = random(1000);
+    let depth = std::env::var("DEPTH").unwrap().parse().unwrap();
+    let x0 = Point(0.5, 0.5, 0.5);
+    let r0 = 0.5;
+    let keys = encode_points(&points, &depth, &x0, &r0);
 
-    // let fname : String = "foo".to_string();
+    let tree : Keys = keys.clone()
+                          .into_iter()
+                          .unique()
+                          .collect();
 
-    // let keys = encode_points(&points, &level, &x0, &r0);
-    // let p = Point(0.8, 0.7, 1.0);
-    // let keys = encode_point(&p, &level, &x0, &r0);
-    // let anchor = point_to_anchor(&p, &level, &x0, &r0);
-    // println!("points {:?}", points);
-    // println!("{:?}", keys);
+    // 0.ii Setup MPI
+    let start = SystemTime::now();
 
+    // 0. Setup MPI
+    let universe = mpi::initialize().unwrap();
+    let world = universe.world();
+    let rank = world.rank();
+
+    let root_rank = 0;
+    let root_process = world.process_at_rank(root_rank);
+    let nprocs : u16 = std::env::var("NPROCS").unwrap().parse().unwrap();
+
+    // 1. Distribute the leaves
+    let leaves = distribute_leaves(
+        tree,
+        world,
+        rank,
+        root_rank,
+        root_process,
+        depth as u16,
+        nprocs
+    );
+
+    // 2. Perform parallel Morton sort over leaves
+    parallel_morton_sort(
+        leaves,
+        world,
+        rank,
+        nprocs,
+    );
 }

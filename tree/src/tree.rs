@@ -59,7 +59,9 @@ pub fn merge(a: &Keys, b: &Keys) -> Vec<Key> {
     merged
 }
 
-pub fn middle(nelems: i32) -> usize {
+
+/// Calculate the middle element of a vector
+fn middle(nelems: usize) -> usize {
 
     if nelems % 2 == 0 {
         (nelems / 2) as usize
@@ -151,6 +153,7 @@ pub fn nleaves(depth: u16) -> u16 {
 
 /// Distribute unsorted leaves across processes
 pub fn distribute_leaves(
+    tree: Keys,
     world: SystemCommunicator,
     rank: i32,
     root_rank: i32,
@@ -158,26 +161,23 @@ pub fn distribute_leaves(
     depth: u16,
     nprocs: u16,
 ) -> Leaves {
-    let nleaves = nleaves(depth);
+    let nleaves = tree.len() as u16;
 
     let load = balance_load(nleaves, nprocs);
     let bufsize = load.counts[rank as usize];
     let max_bufsize = load.counts[0];
 
-    // Buffer for partitioning leaves across procs
+    // Buffer for keys local to this process
     let mut local_leaves = vec![Key(0); bufsize as usize];
 
-    // Buffer for receiving partner leaves
+    // Buffer for receiving partner keys
     let received_leaves = vec![Key(0); max_bufsize as usize];
 
     // Distribute the leaves to all participating processes
     if rank == root_rank {
 
-        // Initialise tree
-        let tree = Octree::new(depth);
-
         // Calculate load
-        let partition = Partition::new(&tree.leaves[..], load.counts, load.displs);
+        let partition = Partition::new(&tree[..], load.counts, load.displs);
 
         // ScatterV
         root_process.scatter_varcount_into_root(&partition, &mut local_leaves[..])
@@ -192,7 +192,7 @@ pub fn distribute_leaves(
     // Sort local leaves using quicksort
     local_leaves.sort();
 
-    Leaves{
+    Leaves {
         local: local_leaves,
         received: received_leaves,
     }
@@ -222,7 +222,7 @@ pub fn parallel_morton_sort(
             // Perform merge
             let merged = merge(&leaves.local, &leaves.received);
 
-            let mid = middle(merged.len() as i32);
+            let mid = middle(merged.len());
 
             if rank < partner {
                 // Keep smaller keys
@@ -234,5 +234,12 @@ pub fn parallel_morton_sort(
             }
         }
     }
+
+    println!("rank {}", rank);
+    println!("[");
+    for leaf in leaves.local {
+        println!("{}", leaf);
+    }
+    println!("]\n");
 }
 

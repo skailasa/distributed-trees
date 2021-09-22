@@ -1,4 +1,7 @@
 use std::cmp::Ordering;
+use std::hash;
+use std::fmt;
+
 use rayon::prelude::*;
 
 
@@ -278,6 +281,19 @@ impl PartialEq for Key {
 
 impl Eq for Key {}
 
+impl std::hash::Hash for Key {
+
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:b}", self.0)
+    }
+}
+
 /// Returns the final 4 bits of a Morton key corresponding
 /// to the octree level of a node.
 ///
@@ -398,7 +414,6 @@ pub fn encode_anchor(anchor: &Anchor) -> Key {
     let key = key << LEVEL_DISPLACEMENT;
 
     Key(key | level)
-
 }
 
 

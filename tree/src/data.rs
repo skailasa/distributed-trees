@@ -4,10 +4,10 @@ use crate::morton::{Point, Points};
 
 /// Generate random distribution of points in range [0, 1),
 /// for testing.
-pub fn random(npoints: u64) -> Vec<Point> {
+pub fn random(npoints: u64) -> Points {
     let mut range = rand::thread_rng();
 
-    let mut points : Vec<Point> = Vec::new();
+    let mut points : Points = Vec::new();
 
     for _ in 0..npoints {
         let x : f64 = range.gen();
