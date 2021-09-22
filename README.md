@@ -6,9 +6,11 @@ Distributed Octrees in Rust, construction inspired by [1, 2].
 
 Node index coordinates are represented using bit-interleaved __Morton Keys__ [1], chosen for their spatial locality properties, in the usual format;
 
-<a href="https://www.codecogs.com/eqnedit.php?latex=z_1y_1x_1&space;...&space;z_ny_nx_n" target="_blank"><img src="https://latex.codecogs.com/gif.latex?z_1y_1x_1&space;...&space;z_ny_nx_n" title="z_1y_1x_1 ... z_ny_nx_n" /></a>
+z_1y_1x_1 ... z_ny_nx_n
 
-We chose to represent Morton keys as 64 bit integers, and the entire tree __linearly__ as a vector of 64 bit integers.
+where x_i is the i'th bit of the x index coordinate of a given node [1].
+
+We chose to represent Morton keys as 64 bit integers, and (sub)trees __linearly__ as vectors of Morton keys.
 
 # Build
 
