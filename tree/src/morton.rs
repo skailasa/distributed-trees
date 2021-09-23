@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::hash;
 use std::fmt;
+use std::collections::HashSet;
 
 use rayon::prelude::*;
 
@@ -216,42 +217,36 @@ fn equal(a: &Key, b: &Key) -> Option<bool> {
 
 
 /// Subroutine of algorithm 12 in Sundar et. al.
-fn _less_than(a: &Key, b: &Key) -> Option<bool> {
+pub fn less_than(a: &Key, b: &Key) -> Option<bool> {
 
     let ax = extract(a, 'x');
     let ay = extract(a, 'y');
     let az = extract(a, 'z');
+    let al = find_level(a);
 
     let bx = extract(b, 'x');
     let by = extract(b, 'y');
     let bz = extract(b, 'z');
-
-    let x = vec![ax^bx, ay^by, az^bz];
-    let e: Vec<i64> = x.iter().map(|num| {log(&num).unwrap_or(-1)}).collect();
-    let max = e.iter().max().unwrap();
-    let argmax = e.iter().position(|elem| elem == max).unwrap();
-
-    match argmax {
-        0 => {if ax < bx {Some(true)} else {Some(false)}},
-        1 => {if ay < by {Some(true)} else {Some(false)}},
-        2 => {if az < bz {Some(true)} else {Some(false)}},
-        _ => None,
-    }
-}
-
-/// Test Morton keys for relative size using algorithm 12
-/// in Sundar et. al.
-fn less_than(a: &Key, b: &Key) -> Option<bool> {
-
-    let al = find_level(a);
     let bl = find_level(b);
 
-    if al == bl {
-        _less_than(a, b)
-    } else if al < bl {
-        Some(true)
-    } else {
-        Some(false)
+    // If anchors match, the one at the coarser level has the lesser Morton id.
+    let same_anchor = (ax == bx) & (ay == by) & (az == bz);
+
+    match same_anchor {
+        true => {if al < bl {Some(true)} else {Some(false)}},
+        false => {
+            let x = vec![ax^bx, ay^by, az^bz];
+            let e: Vec<i64> = x.iter().map(|num| {log(&num).unwrap_or(-1)}).collect();
+            let max = e.iter().max().unwrap();
+            let argmax = e.iter().position(|elem| elem == max).unwrap();
+
+            match argmax {
+                0 => {if ax < bx {Some(true)} else {Some(false)}},
+                1 => {if ay < by {Some(true)} else {Some(false)}},
+                2 => {if az < bz {Some(true)} else {Some(false)}},
+                _ => None,
+            }
+        }
     }
 }
 
@@ -442,6 +437,41 @@ pub fn encode_points(
 }
 
 
+/// Find ancestors of a Morton key.
+pub fn find_ancestors(key: &Key) -> Keys {
+
+    let root = Key(0);
+    let mut parent = find_parent(key);
+    let mut ancestors : Keys = vec![parent];
+
+    while parent != root {
+
+        parent = find_parent(&parent);
+        ancestors.push(parent);
+    }
+
+    ancestors
+}
+
+/// Find the nearest common ancestor of two keys
+pub fn nearest_common_ancestor(a: &Key, b: &Key) -> Key {
+
+    let ancestors_a: HashSet<Key> = find_ancestors(a).into_iter()
+                                                     .collect();
+    let ancestors_b: HashSet<Key> = find_ancestors(b).into_iter()
+                                                     .collect();
+
+    let intersection: HashSet<Key> = ancestors_a.intersection(&ancestors_b)
+                                                 .copied()
+                                                 .collect();
+
+    let intersection: Vec<Key> = intersection.into_iter()
+                                             .collect();
+
+    intersection.into_iter().max().unwrap()
+}
+
+
 mod tests {
     use super::*;
 
@@ -532,5 +562,19 @@ mod tests {
         let a = Key(0b10000001);
         let b = Key(0b10000010);
         assert!(a < b);
+    }
+
+    #[test]
+    fn test_find_ancestors() {
+        let key = Key(0b1110001010011);
+        let mut expected = vec![
+            Key(0b1110000010), Key(0b1110001), Key(0)
+        ];
+
+        expected.sort();
+
+        let mut result = find_ancestors(&key);
+        result.sort();
+        assert_eq!(expected, result);
     }
 }

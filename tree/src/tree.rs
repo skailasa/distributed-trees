@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use memoffset::offset_of;
 use mpi::{
     Address,
@@ -11,6 +13,9 @@ use mpi::{
 use crate::morton::{
     Key,
     Keys,
+    find_ancestors,
+    find_children,
+    nearest_common_ancestor,
 };
 
 pub const MPI_PROC_NULL: i32 = -1;
@@ -158,7 +163,6 @@ pub fn distribute_leaves(
     rank: i32,
     root_rank: i32,
     root_process: Process<SystemCommunicator>,
-    depth: u16,
     nprocs: u16,
 ) -> Leaves {
     let nleaves = tree.len() as u16;
@@ -243,3 +247,63 @@ pub fn parallel_morton_sort(
     println!("]\n");
 }
 
+
+/// Construct a minimal linear octree between two octants
+/// Algorithm 3 in Sundar et. al.
+pub fn complete_region(a: &Key, b: &Key) -> Keys {
+
+    let ancestors_a: HashSet<Key> = find_ancestors(a).into_iter()
+                                                     .collect();
+    let ancestors_b: HashSet<Key> = find_ancestors(b).into_iter()
+                                                     .collect();
+    let na = nearest_common_ancestor(a, b);
+
+
+    let mut working_list: HashSet<Key> = find_children(&na).into_iter()
+                                                           .collect();
+    let mut minimal_tree: Keys = Vec::new();
+
+    let mut i = 0;
+
+    loop {
+
+        let mut aux_list: HashSet<Key> = HashSet::new();
+        let mut len = 0;
+
+        // println!("len working list {}", working_list.len());
+        // println!("before [");
+        // for node in &working_list {
+        //     println!("{}", node);
+        // }
+        // println!("]\n");
+        for w in &working_list {
+
+            if ((a < w) & (w < b)) & (ancestors_b.contains(w) == false) {
+                aux_list.insert(w.clone());
+                len += 1;
+            } else if ancestors_a.contains(w) | ancestors_b.contains(w) {
+                for child in find_children(w) {
+                    aux_list.insert(child);
+                }
+            }
+        }
+        // println!("after [");
+        // for node in &aux_list {
+        //     println!("{}", node);
+        // }
+        // println!("]\n");
+
+        if len == working_list.len() {
+            minimal_tree = aux_list.into_iter()
+                                   .collect();
+            break
+        } else {
+            working_list = aux_list;
+        }
+
+        i += 1;
+    }
+
+    minimal_tree.sort();
+    minimal_tree
+}
