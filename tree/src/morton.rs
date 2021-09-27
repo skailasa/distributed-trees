@@ -1,6 +1,5 @@
 use std::cmp::Ordering;
-use std::hash;
-use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::collections::HashSet;
 
 use rayon::prelude::*;
@@ -27,11 +26,15 @@ fn equal(a: &Key, b: &Key) -> Option<bool> {
 }
 
 
-fn less_msb(x: u64, y: u64) -> bool {
+/// Subroutine in less than function, equivalent to comparing floor of log_2(x).
+/// Adapted from T.Chan Chan, T. "Closest-point problems simplified on the RAM",
+/// ACM-SIAM Symposium on Discrete Algorithms (2002).
+fn most_significant_bit(x: u64, y: u64) -> bool {
     (x < y) & (x < (x^y))
 }
 
-/// Implementation of Algorithm 12 in Sundar et. al.
+/// Implementation of Algorithm 12 in Sundar et. al. as a subroutine for the
+/// Ord trait. If a is less than b, this returns true.
 fn less_than(a: &Key, b: &Key) -> Option<bool> {
 
     // If anchors match, the one at the coarser level has the lesser Morton id.
@@ -45,7 +48,7 @@ fn less_than(a: &Key, b: &Key) -> Option<bool> {
             let mut argmax = 0;
 
             for dim in 1..3 {
-                if less_msb(x[argmax as usize], x[dim as usize]) {
+                if most_significant_bit(x[argmax as usize], x[dim as usize]) {
                     argmax = dim
                 }
             }
@@ -92,10 +95,10 @@ impl PartialEq for Key {
 
 impl Eq for Key {}
 
+/// A unique hash for a Morton key is simply it's four components.
+impl Hash for Key {
 
-impl std::hash::Hash for Key {
-
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash(state);
         self.1.hash(state);
         self.2.hash(state);
@@ -104,7 +107,13 @@ impl std::hash::Hash for Key {
 }
 
 
-
+/// Subroutine for finding the parent of a Morton key in its component
+/// representation.
+///
+/// The trick is to figure out whether the anchor of a key
+/// survives at its parent level, and notice that anchors at odd indices
+/// don't survive. `parent_level_diff' refers to the difference between
+/// the parent's key's level, and the maximum depth of the tree.
 fn odd_index(idx: u64, parent_level_diff: u64) -> bool {
     let factor = 1 << parent_level_diff;
 
@@ -116,6 +125,7 @@ fn odd_index(idx: u64, parent_level_diff: u64) -> bool {
 }
 
 
+/// Find the parent of a Morton key.
 pub fn find_parent(key: &Key, depth: &u64) -> Key {
 
     // Return root if root fed in
@@ -150,6 +160,8 @@ pub fn find_parent(key: &Key, depth: &u64) -> Key {
 }
 
 
+/// Find the siblings of a Morton key. Siblings share
+/// the same parent.
 pub fn find_siblings(key: &Key, depth: &u64) -> Keys {
     let parent = find_parent(key, depth);
 
@@ -175,12 +187,11 @@ pub fn find_siblings(key: &Key, depth: &u64) -> Keys {
             }
         }
     }
-
     siblings
 }
 
 
-/// Find the children of a given Morton key.
+/// Find the children of a Morton key.
 pub fn find_children(key: &Key, depth: &u64) -> Keys {
 
     let mut first_child = key.clone();
@@ -189,6 +200,7 @@ pub fn find_children(key: &Key, depth: &u64) -> Keys {
 }
 
 
+/// Encode a Cartesian coordinate in a Morton key.
 pub fn encode_point(
     &point: &Point, &level: &u64, &depth: &u64, &x0: &Point, &r0: &f64
 ) -> Key {
@@ -200,7 +212,6 @@ pub fn encode_point(
     key.0 = ((point.0 - displacement.0) / side_length).floor() as u64;
     key.1 = ((point.1 - displacement.1) / side_length).floor() as u64;
     key.2 = ((point.2 - displacement.2) / side_length).floor() as u64;
-
     key
 }
 

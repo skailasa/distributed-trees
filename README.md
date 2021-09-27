@@ -36,6 +36,7 @@ Number of MPI processes must be set to be a multiple or factor of 8. This is to 
 ```bash
 export NPROCS=4 # Number of MPI processes
 export DEPTH=3 # Maximum depth of octree
+export NPOINTS=100000 # Number of points to distribute randomly (for testing)
 
 mpirun -n $NPROCS /path/to/tree
 ```

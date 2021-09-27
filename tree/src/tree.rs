@@ -18,6 +18,7 @@ use crate::morton::{
     find_finest_common_ancestor,
 };
 
+pub const SENTINEL: u64 = 999;
 pub const MPI_PROC_NULL: i32 = -1;
 
 /// Implement MPI equivalent datatype for Morton keys
@@ -150,116 +151,64 @@ pub fn compute_partner(rank: i32, phase: i32, nprocs: i32) -> i32 {
     partner
 }
 
-pub struct Leaves {
-    pub local: Keys,
-    pub received: Keys,
-}
 
-
-pub fn nleaves(depth: u16) -> u16 {
-    let base: u16 = 2;
-    let dim: u16 = 3;
-    u16::pow(base, (dim*depth).into())
-}
-
-/// Distribute unsorted leaves across processes
-pub fn distribute_leaves(
-    tree: Keys,
-    world: SystemCommunicator,
-    rank: i32,
-    root_rank: i32,
-    root_process: Process<SystemCommunicator>,
-    nprocs: u16,
-) -> Leaves {
-    let nleaves = tree.len() as u16;
-
-    let load = balance_load(nleaves, nprocs);
-    let bufsize = load.counts[rank as usize];
-    let max_bufsize = load.counts[0];
-
-    // Buffer for keys local to this process
-    let mut local_leaves = vec![Key(0, 0, 0, 0); bufsize as usize];
-
-    // Buffer for receiving partner keys
-    let received_leaves = vec![Key(0, 0, 0, 0); max_bufsize as usize];
-
-    // Distribute the leaves to all participating processes
-    if rank == root_rank {
-
-        // Calculate load
-        let partition = Partition::new(&tree[..], load.counts, load.displs);
-
-        // ScatterV
-        root_process.scatter_varcount_into_root(&partition, &mut local_leaves[..])
-
-    } else {
-        root_process.scatter_varcount_into(&mut local_leaves[..])
-    }
-
-    // Ensure that scatter has happened
-    world.barrier();
-
-    // Sort local leaves using quicksort
-    local_leaves.sort();
-
-    // println!("rank: {}, leaves {:?}", rank, local_leaves);
-
-    Leaves {
-        local: local_leaves,
-        received: received_leaves,
-    }
-}
-
-/// Sort distributed leaves in Morton order
+/// Perform parallel sort on leaves, dominates complexity of algorithm
 pub fn parallel_morton_sort(
-    mut leaves: Leaves,
+    mut local_leaves: Keys,
+    mut received_leaves: Keys,
     world: SystemCommunicator,
     rank: i32,
     nprocs: u16,
-) -> Leaves {
-
+) -> Keys {
     // Guaranteed to converge in nprocs phases
     for phase in 0..nprocs {
 
         let partner = compute_partner(rank, phase as i32, nprocs as i32);
 
-        // Send local leaves to partner, and recieve their leaves
+        // Send local leaves to partner, and receive their leaves
         if partner != MPI_PROC_NULL {
 
             let partner_process = world.process_at_rank(partner);
 
-            p2p::send_receive_into(&leaves.local[..], &partner_process, &mut leaves.received[..], &partner_process);
+            p2p::send_receive_into(&local_leaves[..], &partner_process, &mut received_leaves[..], &partner_process);
 
             // println!("Rank {}, received: {:?}  sent {:?}", rank, received_leaves, local_leaves);
 
-            // Perform merge
-            let merged = merge(&leaves.local, &leaves.received);
+            // Perform merge, excluding sentinel from received leaves
+            let mut received: Keys = received_leaves.iter()
+                                                .filter(|&k| k.3 != SENTINEL)
+                                                .cloned()
+                                                .collect();
+
+            let mut local: Keys = local_leaves.iter()
+                                          .filter(|&k| k.3 != SENTINEL)
+                                          .cloned()
+                                          .collect();
+
+            // Input to merge must be sorted
+            local.sort();
+            received.sort();
+            let merged = merge(&local, &received);
 
             let mid = middle(merged.len());
 
             if rank < partner {
                 // Keep smaller keys
-                leaves.local = merged[..mid].to_vec();
+                local_leaves = merged[..mid].to_vec();
 
             } else {
                 // Keep larger keys
-                leaves.local = merged[mid..].to_vec();
+                local_leaves = merged[mid..].to_vec();
             }
         }
     }
 
-    leaves
-
-    // println!("rank {}", rank);
-    // println!("[");
-    // for leaf in leaves.local {
-    //     println!("{}", leaf);
-    // }
-    // println!("]\n");
+    local_leaves.sort();
+    local_leaves
 }
 
 
-/// Construct a minimal linear octree between two octants
+/// Construct a minimal linear octree between two octants adapted from
 /// Algorithm 3 in Sundar et. al.
 pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
 
@@ -306,16 +255,17 @@ pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
 }
 
 
-// Complete minimal trees at each processor
+/// Find coarsest 'blocks' at each processor. These are used to seed
+/// The construction of a minimal octree in Algorithm 4 of Sundar et. al.
 pub fn find_blocks(
     rank: i32,
-    mut leaves: Leaves,
+    mut local_leaves: Keys,
     depth: &u64
-) {
+) -> Keys {
 
     // Find least and greatest leaves on processor
-    let min: Key = leaves.local.iter().min().unwrap().clone();
-    let max: Key = leaves.local.iter().max().unwrap().clone();
+    let min: Key = local_leaves.iter().min().unwrap().clone();
+    let max: Key = local_leaves.iter().max().unwrap().clone();
 
     // let a =  min;
     // let b = max;
@@ -335,7 +285,6 @@ pub fn find_blocks(
     // println!(" ");
 
     // Find blocks
-
     let levels: Vec<u64> = complete.iter()
                         .map(|k| {k.3})
                         .collect();
@@ -354,9 +303,9 @@ pub fn find_blocks(
                                     .map(|(index, _)| index)
                                     .collect();
 
-    println!("block idxs {:?}", block_idxs);
-    println!("blocks {:?}", complete[block_idxs[0]]);
-    println!("blocks {:?}", complete[block_idxs[1]]);
-    println!("complete {:?}", complete);
-    println!("")
+    let blocks: Keys = block_idxs.iter()
+                               .map(|&i| complete[i])
+                               .collect();
+
+    blocks
 }
