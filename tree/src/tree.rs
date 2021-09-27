@@ -15,7 +15,7 @@ use crate::morton::{
     Keys,
     find_ancestors,
     find_children,
-    nearest_common_ancestor,
+    find_finest_common_ancestor,
 };
 
 pub const MPI_PROC_NULL: i32 = -1;
@@ -25,11 +25,17 @@ unsafe impl Equivalence for Key {
     type Out = UserDatatype;
     fn equivalent_datatype() -> Self::Out {
         UserDatatype::structured(
-            &[1],
+            &[1, 1, 1, 1],
             &[
                 offset_of!(Key, 0) as Address,
+                offset_of!(Key, 1) as Address,
+                offset_of!(Key, 2) as Address,
+                offset_of!(Key, 3) as Address,
             ],
             &[
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
                 UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
             ],
         )
@@ -172,10 +178,10 @@ pub fn distribute_leaves(
     let max_bufsize = load.counts[0];
 
     // Buffer for keys local to this process
-    let mut local_leaves = vec![Key(0); bufsize as usize];
+    let mut local_leaves = vec![Key(0, 0, 0, 0); bufsize as usize];
 
     // Buffer for receiving partner keys
-    let received_leaves = vec![Key(0); max_bufsize as usize];
+    let received_leaves = vec![Key(0, 0, 0, 0); max_bufsize as usize];
 
     // Distribute the leaves to all participating processes
     if rank == root_rank {
@@ -196,6 +202,8 @@ pub fn distribute_leaves(
     // Sort local leaves using quicksort
     local_leaves.sort();
 
+    // println!("rank: {}, leaves {:?}", rank, local_leaves);
+
     Leaves {
         local: local_leaves,
         received: received_leaves,
@@ -208,11 +216,11 @@ pub fn parallel_morton_sort(
     world: SystemCommunicator,
     rank: i32,
     nprocs: u16,
-) {
+) -> Leaves {
 
     // Guaranteed to converge in nprocs phases
     for phase in 0..nprocs {
-        // println!("phase {}", phase);
+
         let partner = compute_partner(rank, phase as i32, nprocs as i32);
 
         // Send local leaves to partner, and recieve their leaves
@@ -221,6 +229,7 @@ pub fn parallel_morton_sort(
             let partner_process = world.process_at_rank(partner);
 
             p2p::send_receive_into(&leaves.local[..], &partner_process, &mut leaves.received[..], &partner_process);
+
             // println!("Rank {}, received: {:?}  sent {:?}", rank, received_leaves, local_leaves);
 
             // Perform merge
@@ -239,59 +248,49 @@ pub fn parallel_morton_sort(
         }
     }
 
-    println!("rank {}", rank);
-    println!("[");
-    for leaf in leaves.local {
-        println!("{}", leaf);
-    }
-    println!("]\n");
+    leaves
+
+    // println!("rank {}", rank);
+    // println!("[");
+    // for leaf in leaves.local {
+    //     println!("{}", leaf);
+    // }
+    // println!("]\n");
 }
 
 
 /// Construct a minimal linear octree between two octants
 /// Algorithm 3 in Sundar et. al.
-pub fn complete_region(a: &Key, b: &Key) -> Keys {
+pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
 
-    let ancestors_a: HashSet<Key> = find_ancestors(a).into_iter()
+    let ancestors_a: HashSet<Key> = find_ancestors(a, depth).into_iter()
                                                      .collect();
-    let ancestors_b: HashSet<Key> = find_ancestors(b).into_iter()
+
+    let ancestors_b: HashSet<Key> = find_ancestors(b, depth).into_iter()
                                                      .collect();
-    let na = nearest_common_ancestor(a, b);
+    let na = find_finest_common_ancestor(a, b, depth);
 
 
-    let mut working_list: HashSet<Key> = find_children(&na).into_iter()
+    let mut working_list: HashSet<Key> = find_children(&na, depth).into_iter()
                                                            .collect();
     let mut minimal_tree: Keys = Vec::new();
-
-    let mut i = 0;
 
     loop {
 
         let mut aux_list: HashSet<Key> = HashSet::new();
         let mut len = 0;
 
-        // println!("len working list {}", working_list.len());
-        // println!("before [");
-        // for node in &working_list {
-        //     println!("{}", node);
-        // }
-        // println!("]\n");
         for w in &working_list {
 
-            if ((a < w) & (w < b)) & (ancestors_b.contains(w) == false) {
+            if ((a < w) & (w < b)) & !ancestors_b.contains(w) {
                 aux_list.insert(w.clone());
                 len += 1;
             } else if ancestors_a.contains(w) | ancestors_b.contains(w) {
-                for child in find_children(w) {
+                for child in find_children(w, depth) {
                     aux_list.insert(child);
                 }
             }
         }
-        // println!("after [");
-        // for node in &aux_list {
-        //     println!("{}", node);
-        // }
-        // println!("]\n");
 
         if len == working_list.len() {
             minimal_tree = aux_list.into_iter()
@@ -300,10 +299,38 @@ pub fn complete_region(a: &Key, b: &Key) -> Keys {
         } else {
             working_list = aux_list;
         }
-
-        i += 1;
     }
 
     minimal_tree.sort();
     minimal_tree
+}
+
+
+// Complete minimal trees at each processor
+pub fn find_blocks(
+    rank: i32,
+    mut leaves: Leaves,
+    depth: &u64
+) {
+
+    // Find least and greatest leaves on processor
+    let min: Key = leaves.local.iter().min().unwrap().clone();
+    let max: Key = leaves.local.iter().max().unwrap().clone();
+
+    let a =  min;
+    let b = max;
+    println!("ab{} = [", rank);
+    println!("np.array([{}, {}, {}, {}]),", a.0, a.1, a.2, a.3);
+    println!("np.array([{}, {}, {}, {}])", b.0, b.1, b.2, b.3);
+    println!("]");
+
+    // Complete region between least and greatest leaves
+    let complete = complete_region(&min, &max, depth);
+    println!("complete{} = [", rank);
+    for node in &complete {
+        println!("np.array([{}, {}, {}, {}], dtype=np.int64),", node.0, node.1, node.2, node.3);
+    };
+    println!("]");
+    println!(" ");
+    // Find blocks
 }

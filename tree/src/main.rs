@@ -8,115 +8,97 @@ use tree::morton::{
     Key,
     Keys,
     Point,
-    encode_points,
-    nearest_common_ancestor,
-    find_siblings,
+    // encode_points,
+    find_finest_common_ancestor,
+    // find_siblings,
     find_children,
+    find_parent,
+    find_siblings,
+    find_ancestors,
+    encode_point,
+    encode_points,
 };
 
 use tree::tree::{
     distribute_leaves,
     parallel_morton_sort,
     complete_region,
+    find_blocks,
 };
 
 
 fn main() {
 
-    let a = Key(0b10);
-    let b = Key(0b0001110010);
 
-    let na = nearest_common_ancestor(&a, &b);
-    let w = find_children(&na);
+    // let a = Key(0, 0, 0, 3);
+    // let b = Key(7, 7, 7, 3);
+    // let depth = 3;
 
-    // println!("nearest common {}", na);
-    // for node in w {
-    //     println!("{}", node);
-    // }
+    // println!("ab = [");
+    // println!("np.array([{}, {}, {}, {}]),", a.0, a.1, a.2, a.3);
+    // println!("np.array([{}, {}, {}, {}])", b.0, b.1, b.2, b.3);
+    // println!("]");
 
-    let res = complete_region(&a, &b);
-
-    assert!(b > a);
-    for node in res {
-        let level = node.0 & 0b1111;
-        let k = ((node.0 >> 4) << 15) | level;
-
-        println!("0b{:b},", k);
-    }
-
-    // let keys: Keys = vec![
-    //     0b110001,
-    //     0b1010001,
-    //     0b1110001,
-    //     0b1,
-    //     0b1100001,
-    //     0b10001,
-    //     0b1000001,
-    //     0b100001,
-    // ].iter().map(|n| {Key(*n)}).collect();
-
-    // let na = nearest_common_ancestor(&a, &b);
-    // let cna = find_children(&na);
-    // for key in cna {
-    //     println!("{}", key);
-    //     println!("{}", a < key);
-    //     println!("{}\n", key < b);
-    // }
-
-    // let root: Key = Key(0);
-    // let a: Key = Key(0b0001);
-    // let b: Key = Key(1110001);
-
-    // for key in find_children(&a) {
-    //     println!("a: {}, key: {}", a, key);
-    //     println!("{}", a < b);
-    //     println!("{}", a < key);
-    //     println!("{}\n", key < b);
-    // }
+    // let res = complete_region(&a, &b, &depth);
+    // assert!(b > a);
+    // println!("complete = [");
+    // for node in &res {
+    //     println!("np.array([{}, {}, {}, {}], dtype=np.int64),", node.0, node.1, node.2, node.3);
+    // };
+    // println!("]")
 
 
-    // // 0.i Encode test points
-    // let points = random(1000);
-    // let depth = std::env::var("DEPTH").unwrap().parse().unwrap();
-    // let x0 = Point(0.5, 0.5, 0.5);
-    // let r0 = 0.5;
-    // let keys = encode_points(&points, &depth, &x0, &r0);
+    // 0.i Encode test points
+    let points = random(100000);
+    let depth = std::env::var("DEPTH").unwrap().parse().unwrap();
+    let x0 = Point(0.5, 0.5, 0.5);
+    let r0 = 0.5;
+    let keys = encode_points(&points, &depth, &depth, &x0, &r0);
 
-    // let tree : Keys = keys.clone()
-    //                       .into_iter()
-    //                       .unique()
-    //                       .collect();
 
-    // // 0.ii Setup MPI
-    // let start = SystemTime::now();
+    let mut tree : Keys = keys.clone()
+                          .into_iter()
+                          .unique()
+                          .collect();
 
-    // let universe = mpi::initialize().unwrap();
-    // let world = universe.world();
-    // let rank = world.rank();
+    tree.sort();
+    // println!("tree: {:?}", tree);
 
-    // let root_rank = 0;
-    // let root_process = world.process_at_rank(root_rank);
-    // let nprocs : u16 = std::env::var("NPROCS").unwrap().parse().unwrap();
+    // 0.ii Setup MPI
+    let start = SystemTime::now();
 
-    // // 1. Distribute the leaves
-    // let leaves = distribute_leaves(
-    //     tree,
-    //     world,
-    //     rank,
-    //     root_rank,
-    //     root_process,
-    //     nprocs
-    // );
+    let universe = mpi::initialize().unwrap();
+    let world = universe.world();
+    let rank = world.rank();
 
-    // // 2. Perform parallel Morton sort over leaves
-    // parallel_morton_sort(
-    //     leaves,
-    //     world,
-    //     rank,
-    //     nprocs,
-    // );
+    let root_rank = 0;
+    let root_process = world.process_at_rank(root_rank);
+    let nprocs : u16 = std::env::var("NPROCS").unwrap().parse().unwrap();
+
+    // 1. Distribute the leaves
+    let leaves = distribute_leaves(
+        tree,
+        world,
+        rank,
+        root_rank,
+        root_process,
+        nprocs
+    );
+
+    // 2. Perform parallel Morton sort over leaves
+    let leaves = parallel_morton_sort(
+        leaves,
+        world,
+        rank,
+        nprocs,
+    );
 
     // 3. Complete minimal tree on each process
+    find_blocks(
+        rank,
+        leaves,
+        &depth
+    )
 
     // 4. Complete minimal block-tree
 
