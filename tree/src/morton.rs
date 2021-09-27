@@ -136,10 +136,6 @@ pub fn find_parent(key: &Key, depth: &u64) -> Key {
 
         let mut parent = Key(key.0, key.1, key.2, key.3-1);
 
-        // println!("x odd {} {} ", x_odd, key.0);
-        // println!("y odd {} {} ", y_odd, key.1);
-        // println!("z odd {}", z_odd);
-
         if x_odd {
             parent.0 = key.0-shift;
         };

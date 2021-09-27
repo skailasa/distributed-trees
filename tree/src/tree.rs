@@ -317,20 +317,46 @@ pub fn find_blocks(
     let min: Key = leaves.local.iter().min().unwrap().clone();
     let max: Key = leaves.local.iter().max().unwrap().clone();
 
-    let a =  min;
-    let b = max;
-    println!("ab{} = [", rank);
-    println!("np.array([{}, {}, {}, {}]),", a.0, a.1, a.2, a.3);
-    println!("np.array([{}, {}, {}, {}])", b.0, b.1, b.2, b.3);
-    println!("]");
+    // let a =  min;
+    // let b = max;
+    // println!("ab{} = [", rank);
+    // println!("np.array([{}, {}, {}, {}]),", a.0, a.1, a.2, a.3);
+    // println!("np.array([{}, {}, {}, {}])", b.0, b.1, b.2, b.3);
+    // println!("]");
 
     // Complete region between least and greatest leaves
     let complete = complete_region(&min, &max, depth);
-    println!("complete{} = [", rank);
-    for node in &complete {
-        println!("np.array([{}, {}, {}, {}], dtype=np.int64),", node.0, node.1, node.2, node.3);
-    };
-    println!("]");
-    println!(" ");
+
+    // println!("complete{} = [", rank);
+    // for node in &complete {
+    //     println!("np.array([{}, {}, {}, {}], dtype=np.int64),", node.0, node.1, node.2, node.3);
+    // };
+    // println!("]");
+    // println!(" ");
+
     // Find blocks
+
+    let levels: Vec<u64> = complete.iter()
+                        .map(|k| {k.3})
+                        .collect();
+
+    let mut coarsest_level = depth.clone();
+
+    for l in levels {
+        if l < coarsest_level {
+            coarsest_level = l;
+        }
+    }
+
+    let block_idxs: Vec<usize> = complete.iter()
+                                    .enumerate()
+                                    .filter(|&(_, &value)| value.3 == coarsest_level)
+                                    .map(|(index, _)| index)
+                                    .collect();
+
+    println!("block idxs {:?}", block_idxs);
+    println!("blocks {:?}", complete[block_idxs[0]]);
+    println!("blocks {:?}", complete[block_idxs[1]]);
+    println!("complete {:?}", complete);
+    println!("")
 }

@@ -93,14 +93,14 @@ fn main() {
         nprocs,
     );
 
-    // 3. Complete minimal tree on each process
+    // 3. Complete minimal tree on each process, and find blocks.
     find_blocks(
         rank,
         leaves,
         &depth
     )
 
-    // 4. Complete minimal block-tree
+    // 4. Complete minimal block-tree across processes
 
     // 5. Rebalance blocks based on load
 
