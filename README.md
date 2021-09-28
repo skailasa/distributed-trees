@@ -55,8 +55,6 @@ RUSTDOCFLAGS="--html-in-header /abs/path/to/docs-header.html" cargo doc
 ```
 # Run
 
-Number of MPI processes must be set to be a multiple or factor of 8. This is to retain compatibility with the distribution of all non-adaptive leaves in an octree.
-
 ```bash
 export NPROCS=4 # Number of MPI processes
 export DEPTH=3 # Maximum depth of octree
