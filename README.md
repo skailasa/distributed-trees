@@ -30,12 +30,11 @@ We initially build an unbalanced tree from particle coordinate data distributed 
 
 4. Complete the region between the least and greatest Morton key at each process to find the coarsest possible nodes that can occupy the domain that they specify. This is algorithm 3 in [1]. The coarsest keys at each processors are now called the 'seeds'. [X]
 
-5. Complete the region between the seeds across all processors. The elements of this final complete linear tree are called 'blocks'. []
+5. Complete the region between the seeds across all processors. The elements of this final complete linear tree are called 'blocks'. [X]
 
-6. Compute load of each block and repartition them such that each processor has a similar load. Load is estimated by computing the number of leaf octants that they could hold. []
+6. Compute load of each block and repartition them such that each processor has a similar load. Load is estimated by computing the number of leaf octants that they could hold. [X]
 
-7. Partition the blocks to satisfy the NCRIT value specified by the user.
-
+7. Partition the blocks to satisfy the NCRIT value specified by the user. []
 
 ## Balancing Phase
 
