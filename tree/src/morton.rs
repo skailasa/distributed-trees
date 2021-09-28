@@ -265,6 +265,63 @@ pub fn find_finest_common_ancestor(a: &Key, b: &Key, depth: &u64) -> Key {
 }
 
 
+/// The deepest first descendent of a Morton key.
+/// First descendents always share anchors.
+pub fn find_deepest_first_descendent(
+    key: &Key, depth: &u64
+) -> Key {
+    if key.3 < *depth {
+        Key(key.0, key.1, key.2, depth.clone())
+    } else {
+        key.clone()
+    }
+}
+
+
+/// The deepest last descendent of a Morton key.
+/// At the deepest level, Keys are considered to have
+/// have side lengths of 1.
+pub fn find_deepest_last_descendent(
+    key: &Key, depth: &u64
+) -> Key {
+
+    if key.3 < *depth {
+
+        let mut level_diff = depth-key.3;
+        let mut dld = find_children(key, depth).iter().max().unwrap().clone();
+
+        while level_diff > 1 {
+            let tmp = dld.clone();
+            dld = find_children(&tmp, depth).iter().max().unwrap().clone();
+            level_diff -= 1;
+        }
+
+        dld
+    } else {
+        key.clone()
+    }
+}
+
+pub fn find_descendents(key: &Key, level: &u64, depth: &u64) -> Keys {
+
+    let mut descendents: Keys = vec![key.clone()];
+    let mut level_diff = depth-level;
+
+    while level_diff > 0 {
+
+        let mut aux: Keys = Vec::new();
+
+        for d in descendents {
+            let mut children = find_children(&d, depth);
+            aux.append(&mut children);
+        }
+
+        descendents = aux;
+        level_diff -= 1;
+    }
+    descendents
+}
+
 mod tests {
     use super::*;
 

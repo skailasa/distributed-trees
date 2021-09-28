@@ -4,7 +4,9 @@ use itertools::Itertools;
 use mpi::traits::*;
 
 use mpi::{
-    datatype::{Partition},
+    collective::SystemOperation,
+    point_to_point as p2p,
+    topology::{Rank}
 };
 
 
@@ -18,15 +20,14 @@ use tree::morton::{
 
 use tree::tree::{
     SENTINEL,
-    balance_load,
+    Weight,
     parallel_morton_sort,
     find_seeds,
     linearise,
-    find_deepest_first_descendent,
-    find_deepest_last_descendent,
+    complete_blocktree,
+    find_block_weights,
+    block_partition
 };
-
-
 
 
 fn main() {
@@ -37,8 +38,9 @@ fn main() {
     let universe = mpi::initialize().unwrap();
     let world = universe.world();
     let rank = world.rank();
+    let size = world.size();
 
-    let root_rank = 0;
+    let root_rank: Rank = 0;
     let root_process = world.process_at_rank(root_rank);
 
     let nprocs : u16 = std::env::var("NPROCS").unwrap().parse().unwrap();
@@ -46,7 +48,7 @@ fn main() {
     let npoints = std::env::var("NPOINTS").unwrap().parse().unwrap();
 
     // Maximum possible buffer size
-    let bufsize: usize = (f64::powf(8.0, depth as f64) / (nprocs as f64)).ceil() as usize;
+    let bufsize: usize = f64::powf(8.0, depth as f64) as usize;
 
     // Buffer for keys local to this process
     let mut local_leaves = vec![Key(0, 0, 0, SENTINEL); bufsize];
@@ -87,7 +89,7 @@ fn main() {
                                .cloned()
                                .collect();
 
-    let mut local_leaves = linearise(&local_leaves, &depth);
+    let local_leaves = linearise(&local_leaves, &depth);
 
     // // Debugging code
     // let local_min = local_leaves.iter().min().unwrap().clone();
@@ -105,9 +107,8 @@ fn main() {
 
 
     // 3. Complete minimal tree on each process, and find seed octants.
-    let seeds = find_seeds(
-        rank,
-        local_leaves,
+    let mut seeds = find_seeds(
+        &local_leaves,
         &depth
     );
 
@@ -116,15 +117,36 @@ fn main() {
     // assert!(Key(0, 4, 4, 1) < Key(4, 0, 4, 1));
 
     // 4. Complete minimal block-tree across processes
-    let root = Key(0, 0, 0, 0);
-    let dld_root = find_deepest_last_descendent(&root, &depth);
-    let dfd_root = find_deepest_first_descendent(&root, &depth);
-    println!("DLD ROOT {:?} DEPTH {}", dld_root, depth);
-    println!("DFD ROOT {:?} DEPTH {}", dfd_root, depth);
 
-    // 5. Rebalance blocks based on load
+    let mut local_blocktree = complete_blocktree(
+        &mut seeds,
+        &depth,
+        rank,
+        nprocs,
+        world,
+    );
 
+    let mut weights = find_block_weights(&local_leaves, &local_blocktree, &depth);
+
+    // Debugging code
+    // println!("RANK {} LOCAL_BLOCKTREE {:?} ", rank, local_blocktree.len());
+    // // println!("RANK {} LOCAL_TREE {:?} ", rank, local_leaves);
+    // println!("RANK {} weights {:?} ", rank, weights);
+    // // println!("RANK {} LOCAL_SEEDS{:?} ", rank, seeds);
+
+    // 5. Re-balance blocks based on load
+    block_partition(
+        weights,
+        &mut local_blocktree,
+        nprocs,
+        rank,
+        size,
+        world,
+    );
+
+    println!("rank {} final blocks {:?}", rank, local_blocktree);
     // 6. Send points for blocks to each process
+
 
     // 7. Split blocks into adaptive tree, and pass into Octree structure.
 

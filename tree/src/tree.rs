@@ -3,19 +3,24 @@ use std::collections::HashSet;
 use memoffset::offset_of;
 use mpi::{
     Address,
-    datatype::{Equivalence, UserDatatype, UncommittedUserDatatype, Partition},
+    datatype::{Equivalence, UserDatatype, UncommittedUserDatatype},
     Count,
     point_to_point as p2p,
     traits::*,
-    topology::{Process, SystemCommunicator},
+    topology::{SystemCommunicator},
+    collective::SystemOperation,
+    topology::{Rank}
 };
 
 use crate::morton::{
     Key,
     Keys,
     find_ancestors,
+    find_descendents,
     find_children,
     find_finest_common_ancestor,
+    find_deepest_first_descendent,
+    find_deepest_last_descendent
 };
 
 pub const SENTINEL: u64 = 999;
@@ -43,12 +48,29 @@ unsafe impl Equivalence for Key {
     }
 }
 
+
+#[derive(Debug, Copy, Clone)]
+pub struct Weight(pub u64);
+pub type Weights = Vec<Weight>;
+
+unsafe impl Equivalence for Weight {
+    type Out = UserDatatype;
+    fn equivalent_datatype() -> Self::Out {
+        UserDatatype::structured(
+            &[1],
+            &[offset_of!(Weight, 0) as Address],
+            &[UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref()]
+        )
+    }
+}
+
+
 /// Merge two sorted vectors of Morton keys
 ///
 /// # Arguments
 /// `a` - Sorted vector of Morton keys
 /// `b` - Sorted vector of Morton keys
-pub fn merge(a: &Keys, b: &Keys) -> Vec<Key> {
+fn merge(a: &Keys, b: &Keys) -> Vec<Key> {
 
     let mut merged = Vec::new();
 
@@ -258,8 +280,7 @@ pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
 /// Find coarsest 'seeds' at each processor. These are used to seed
 /// The construction of a minimal block octree in Algorithm 4 of Sundar et. al.
 pub fn find_seeds(
-    rank: i32,
-    mut local_leaves: Keys,
+    local_leaves: &Keys,
     depth: &u64
 ) -> Keys {
 
@@ -267,27 +288,11 @@ pub fn find_seeds(
     let min: Key = local_leaves.iter().min().unwrap().clone();
     let max: Key = local_leaves.iter().max().unwrap().clone();
 
-    // let a =  min;
-    // let b = max;
-    // println!("ab{} = [", rank);
-    // println!("np.array([{}, {}, {}, {}]),", a.0, a.1, a.2, a.3);
-    // println!("np.array([{}, {}, {}, {}])", b.0, b.1, b.2, b.3);
-    // println!("]");
-
     // Complete region between least and greatest leaves
     let complete = complete_region(&min, &max, depth);
 
-    // println!("complete{} = [", rank);
-    // for node in &complete {
-    //     println!("np.array([{}, {}, {}, {}], dtype=np.int64),", node.0, node.1, node.2, node.3);
-    // };
-    // println!("]");
-    // println!(" ");
-
     // Find blocks
-    let levels: Vec<u64> = complete.iter()
-                        .map(|k| {k.3})
-                        .collect();
+    let levels: Vec<u64> = complete.iter().map(|k| {k.3}).collect();
 
     let mut coarsest_level = depth.clone();
 
@@ -297,21 +302,21 @@ pub fn find_seeds(
         }
     }
 
-    let block_idxs: Vec<usize> = complete.iter()
-                                    .enumerate()
-                                    .filter(|&(_, &value)| value.3 == coarsest_level)
-                                    .map(|(index, _)| index)
-                                    .collect();
+    let seed_idxs: Vec<usize> = complete.iter()
+                                         .enumerate()
+                                         .filter(|&(_, &value)| value.3 == coarsest_level)
+                                         .map(|(index, _)| index)
+                                         .collect();
 
-    let blocks: Keys = block_idxs.iter()
-                               .map(|&i| complete[i])
-                               .collect();
+    let seeds: Keys = seed_idxs.iter()
+                                 .map(|&i| complete[i])
+                                 .collect();
 
-    blocks
+    seeds
 }
 
 
-/// Remove overlaps from a sorted list of octants
+/// Remove overlaps from a sorted list of octants, algorithm 7 in Sundar et. al.
 pub fn linearise(keys: &Keys, depth: &u64) -> Keys {
 
     let mut linearised: Keys = Vec::new();
@@ -328,39 +333,195 @@ pub fn linearise(keys: &Keys, depth: &u64) -> Keys {
 }
 
 
-/// The deepest first descendent of a Morton key.
-/// First descendents always share anchors.
-pub fn find_deepest_first_descendent(
-    key: &Key, depth: &u64
-) -> Key {
-    if key.3 < *depth {
-        Key(key.0, key.1, key.2, depth.clone())
-    } else {
-        key.clone()
+/// Complete a distributed blocktree from the seed octants, following Algorithm 4
+/// in Sundar. et. al.
+pub fn complete_blocktree(
+    seeds: &mut Keys,
+    depth: &u64,
+    rank: i32,
+    nprocs: u16,
+    world: SystemCommunicator
+) -> Keys {
+    if rank == 0 {
+        let root = Key(0, 0, 0, 0);
+        let dfd_root = find_deepest_first_descendent(&root, &depth);
+        let min = seeds.iter().min().unwrap();
+        let na = find_finest_common_ancestor(&dfd_root, min, &depth);
+        let mut first_child = na.clone();
+        first_child.3 += 1;
+        seeds.push(first_child);
+        seeds.sort();
     }
+
+    if rank == (nprocs-1).into() {
+        let root = Key(0, 0, 0, 0);
+        let dld_root = find_deepest_last_descendent(&root, &depth);
+        let max = seeds.iter().max().unwrap();
+        let na = find_finest_common_ancestor(&dld_root, max, &depth);
+        let children = find_children(&na, &depth);
+        let last_child = children.iter().max().unwrap().clone();
+        seeds.push(last_child);
+    }
+
+    // Send required data to partner process.
+    if rank > 0 {
+        let min = seeds.iter().min().unwrap().clone();
+        world.process_at_rank(rank-1).send(&min);
+        // println!("sending {:?} at rank {:?}", min, rank);
+    }
+
+    if rank < (nprocs-1).into() {
+        let rec = world.any_process().receive::<Key>();
+        seeds.push(rec.0);
+        // println!("Receieved {:?} at rank {} ", rec, rank);
+    }
+
+    // Complete region between seeds at each process
+    let mut local_blocktree: Keys = Vec::new();
+
+    for i in 0..(seeds.len()-1) {
+        let a = seeds[i];
+        let b = seeds[i+1];
+
+        let mut tmp = complete_region(&a, &b, &depth);
+        local_blocktree.push(a);
+        local_blocktree.append(&mut tmp);
+    }
+
+    if rank == (nprocs-1).into() {
+        local_blocktree.push(seeds.last().unwrap().clone());
+    }
+
+    local_blocktree.sort();
+    local_blocktree
 }
 
 
-/// The deepest last descendent of a Morton key.
-/// At the deepest level, Keys are considered to have
-/// have side lengths of 1.
-pub fn find_deepest_last_descendent(
-    key: &Key, depth: &u64
-) -> Key {
+pub fn find_block_weights(
+    local_leaves: &Keys,
+    local_blocktree: &Keys,
+    depth: &u64,
+) -> Weights {
 
-    if key.3 < *depth {
+    let local_leaves_set: HashSet<Key> = local_leaves.into_iter()
+                                                     .cloned()
+                                                     .collect();
 
-        let mut level_diff = depth-key.3;
-        let mut dld = find_children(key, depth).iter().max().unwrap().clone();
+    let mut weights: Weights = vec![Weight(0); local_blocktree.len()];
 
-        while level_diff > 1 {
-            let tmp = dld.clone();
-            dld = find_children(&tmp, depth).iter().max().unwrap().clone();
-            level_diff -= 1;
+    for (i, block) in local_blocktree.iter().enumerate() {
+        let level = block.3;
+        let descendents = find_descendents(&block, &level, &depth);
+
+        let mut w = 0;
+
+        for d in descendents {
+            if local_leaves_set.contains(&d) {
+                w += 1;
+            }
         }
-
-        dld
-    } else {
-        key.clone()
+        weights[i] = Weight(w)
     }
+    weights
+}
+
+
+/// Re-partition the blocks so that amount of computation on
+/// each node is balanced
+pub fn block_partition(
+    weights: Weights,
+    local_blocktree: &mut Keys,
+    nprocs: u16,
+    rank: i32,
+    size: i32,
+    world: SystemCommunicator,
+) {
+
+    let mut local_weight = weights.iter().fold(0, |acc, x| acc + x.0);
+    let mut local_nblocks = local_blocktree.len();
+    let mut cumulative_weight = 0;
+    let mut cumulative_nblocks = 0;
+    let mut total_weight = 0;
+    let mut total_nblocks = 0;
+    world.scan_into(&local_weight, &mut cumulative_weight, &SystemOperation::sum());
+    world.scan_into(&local_nblocks, &mut cumulative_nblocks, &SystemOperation::sum());
+
+    // Broadcast total weight from last process
+    let last_rank: Rank = (nprocs-1) as Rank;
+    let last_process = world.process_at_rank(last_rank);
+
+    if rank == last_rank {
+        total_weight = cumulative_weight.clone();
+        total_nblocks = cumulative_nblocks.clone();
+    } else {
+        total_weight = 0;
+        total_nblocks = 0;
+    }
+
+    last_process.broadcast_into(&mut total_weight);
+    last_process.broadcast_into(&mut total_nblocks);
+
+    // Maximum weight per process
+    let w: u64 = (total_weight as f64 / nprocs as f64).ceil() as u64;
+    let k: u64 = total_weight % (nprocs as u64);
+
+    let mut local_cumulative_weights = weights.clone();
+    let mut sum = 0;
+    for (i, w) in weights.iter().enumerate() {
+        sum += w.0;
+        local_cumulative_weights[i] = Weight(sum+cumulative_weight-local_weight as u64)
+    }
+
+        let p: u64= (rank+1) as u64;
+    let next_rank = if rank + 1 < size { rank + 1 } else { 0 };
+    let previous_rank = if rank > 0 { rank - 1 } else { size - 1 };
+
+    let mut q: Keys = Vec::new();
+
+    if p <= k{
+        let cond1: u64 = (p-1)*((w+1));
+        let cond2: u64 = p*((w+1));
+
+        for (i, &block) in local_blocktree.iter().enumerate() {
+            if  (cond1 <= local_cumulative_weights[i].0)
+                & (local_cumulative_weights[i].0 < cond2)
+            {
+                q.push(block);
+            }
+        }
+    } else {
+        let cond1: u64 = (p-1)*w + k;
+        let cond2: u64 = p*w + k;
+
+        for (i, &block) in local_blocktree.iter().enumerate() {
+            if (cond1 <= local_cumulative_weights[i].0)
+                & (local_cumulative_weights[i].0 < cond2)
+            {
+                q.push(block);
+            }
+        }
+    }
+
+    // Send receive qs with partner process
+    let next_process = world.process_at_rank(next_rank);
+    let previous_process = world.process_at_rank(previous_rank);
+
+    let mut received_blocks: Keys = vec![Key(0, 0, 0, SENTINEL); total_nblocks];
+
+    p2p::send_receive_into(&q[..], &previous_process, &mut received_blocks[..], &next_process);
+
+    received_blocks = received_blocks.iter()
+                                     .filter(|b| b.3 != SENTINEL)
+                                     .cloned()
+                                     .collect();
+
+
+    for sent in q {
+        local_blocktree.iter()
+                       .position(|&n| n == sent)
+                       .map(|e| local_blocktree.remove(e));
+    }
+
+    local_blocktree.extend(&received_blocks);
+
 }
