@@ -213,15 +213,15 @@ pub fn parallel_morton_sort(
 pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
 
     let ancestors_a: HashSet<Key> = find_ancestors(a, depth).into_iter()
-                                                     .collect();
+                                                            .collect();
 
     let ancestors_b: HashSet<Key> = find_ancestors(b, depth).into_iter()
-                                                     .collect();
+                                                            .collect();
     let na = find_finest_common_ancestor(a, b, depth);
 
 
     let mut working_list: HashSet<Key> = find_children(&na, depth).into_iter()
-                                                           .collect();
+                                                                  .collect();
     let mut minimal_tree: Keys = Vec::new();
 
     loop {
@@ -255,9 +255,9 @@ pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
 }
 
 
-/// Find coarsest 'blocks' at each processor. These are used to seed
-/// The construction of a minimal octree in Algorithm 4 of Sundar et. al.
-pub fn find_blocks(
+/// Find coarsest 'seeds' at each processor. These are used to seed
+/// The construction of a minimal block octree in Algorithm 4 of Sundar et. al.
+pub fn find_seeds(
     rank: i32,
     mut local_leaves: Keys,
     depth: &u64
@@ -308,4 +308,59 @@ pub fn find_blocks(
                                .collect();
 
     blocks
+}
+
+
+/// Remove overlaps from a sorted list of octants
+pub fn linearise(keys: &Keys, depth: &u64) -> Keys {
+
+    let mut linearised: Keys = Vec::new();
+    for i in 0..(keys.len()-1) {
+        let curr = keys[i];
+        let next = keys[i+1];
+        let ancestors_next: HashSet<Key> = find_ancestors(&next, depth).into_iter()
+                                                                       .collect();
+        if !ancestors_next.contains(&curr) {
+            linearised.push(curr)
+        }
+    }
+    linearised
+}
+
+
+/// The deepest first descendent of a Morton key.
+/// First descendents always share anchors.
+pub fn find_deepest_first_descendent(
+    key: &Key, depth: &u64
+) -> Key {
+    if key.3 < *depth {
+        Key(key.0, key.1, key.2, depth.clone())
+    } else {
+        key.clone()
+    }
+}
+
+
+/// The deepest last descendent of a Morton key.
+/// At the deepest level, Keys are considered to have
+/// have side lengths of 1.
+pub fn find_deepest_last_descendent(
+    key: &Key, depth: &u64
+) -> Key {
+
+    if key.3 < *depth {
+
+        let mut level_diff = depth-key.3;
+        let mut dld = find_children(key, depth).iter().max().unwrap().clone();
+
+        while level_diff > 1 {
+            let tmp = dld.clone();
+            dld = find_children(&tmp, depth).iter().max().unwrap().clone();
+            level_diff -= 1;
+        }
+
+        dld
+    } else {
+        key.clone()
+    }
 }

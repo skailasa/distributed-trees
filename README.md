@@ -12,8 +12,32 @@ let key = Key(0, 0, 0, 1)
 ```
 This form is chosen as it's easier to implement sorting with absolute coordinates. We use the algorithm from [3].
 
+# Algorithm
 
-We chose to represent Morton keys as 64 bit integers, and (sub)trees __linearly__ as vectors of Morton keys.
+Tree construction consists of a __building__ and a __balancing__ phase.
+
+We initially build an unbalanced tree from particle coordinate data distributed across a cluster. This unbalanced tree is then 2:1 balanced.
+
+## Building Phase
+
+[X] indicates whether this functionality has been completed.
+
+1. Apply Morton encoding to distributed point data at each processor. [X]
+
+2. Apply a Parallel (Bitonic) sort to the Morton keys, such that the rank 0 process has the least keys, and the rank NPROC-1 process has the greatest keys. [X]
+
+3. Remove the duplicates and overlaps for Morton keys on each process if they exist. [X]
+
+4. Complete the region between the least and greatest Morton key at each process to find the coarsest possible nodes that can occupy the domain that they specify. This is algorithm 3 in [1]. The coarsest keys at each processors are now called the 'seeds'. [X]
+
+5. Complete the region between the seeds across all processors. The elements of this final complete linear tree are called 'blocks'. []
+
+6. Compute load of each block and repartition them such that each processor has a similar load. Load is estimated by computing the number of leaf octants that they could hold. []
+
+7. Partition the blocks to satisfy the NCRIT value specified by the user.
+
+
+## Balancing Phase
 
 # Build
 

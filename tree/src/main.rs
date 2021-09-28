@@ -20,7 +20,10 @@ use tree::tree::{
     SENTINEL,
     balance_load,
     parallel_morton_sort,
-    find_blocks,
+    find_seeds,
+    linearise,
+    find_deepest_first_descendent,
+    find_deepest_last_descendent,
 };
 
 
@@ -47,37 +50,27 @@ fn main() {
 
     // Buffer for keys local to this process
     let mut local_leaves = vec![Key(0, 0, 0, SENTINEL); bufsize];
-    let mut received_leaves = vec![Key(0, 0, 0, SENTINEL); bufsize];
 
     // Buffer for receiving partner keys
-
-    if rank == root_rank {
-
-        let points = random(npoints);
-        let x0 = Point(0.5, 0.5, 0.5);
-        let r0 = 0.5;
-        let keys = encode_points(&points, &depth, &depth, &x0, &r0);
+    let mut received_leaves = vec![Key(0, 0, 0, SENTINEL); bufsize];
 
 
-        let mut tree : Keys = keys.clone()
-                            .into_iter()
-                            .unique()
-                            .collect();
+    // 1. Generate random points on each process.
+    let points = random(npoints);
+    let x0 = Point(0.5, 0.5, 0.5);
+    let r0 = 0.5;
+    let keys = encode_points(&points, &depth, &depth, &x0, &r0);
 
-        println!("nleaves in total {}", tree.len());
 
-        // Calculate load
-        let load = balance_load(tree.len() as u16, nprocs);
-        let partition = Partition::new(&tree[..], load.counts, load.displs);
+    let local_tree: Keys = keys.iter()
+                               .unique()
+                               .cloned()
+                               .collect();
 
-        // ScatterV
-        root_process.scatter_varcount_into_root(&partition, &mut local_leaves[..])
-
-    } else {
-        root_process.scatter_varcount_into(&mut local_leaves[..])
+    // println!("RANK {} nleaves in total {}", rank, local_tree.len());
+    for (i, k) in local_tree.iter().enumerate() {
+        local_leaves[i] = k.clone();
     }
-
-    world.barrier();
 
     // 2. Perform parallel Morton sort over leaves
     let mut local_leaves = parallel_morton_sort(
@@ -88,30 +81,46 @@ fn main() {
         nprocs,
     );
 
+    // 3. Remove duplicates at each processor and remove overlaps if there are any
+    local_leaves = local_leaves.iter()
+                               .unique()
+                               .cloned()
+                               .collect();
 
-    let local_min = local_leaves.iter().min().unwrap().clone();
-    let local_max = local_leaves.iter().max().unwrap().clone();
-    for &leaf in &local_leaves {
-        if (leaf != local_max) & (leaf != local_min) {
-            assert!((local_min < leaf) & (leaf < local_max));
-        }
-    }
+    let mut local_leaves = linearise(&local_leaves, &depth);
 
-    assert!(local_min < local_max);
-    assert!(Key(4, 0, 0, 1) > Key(0, 4, 0, 1));
+    // // Debugging code
+    // let local_min = local_leaves.iter().min().unwrap().clone();
+    // let local_max = local_leaves.iter().max().unwrap().clone();
+    // for &leaf in &local_leaves {
+    //     if (leaf != local_max) & (leaf != local_min) {
+    //         assert!((local_min < leaf) & (leaf < local_max));
+    //     }
+    // }
 
-    println!("RANK {} min {:?} max {:?}", rank, local_min, local_max);
-    println!("RANK {} nleaves {:?}", rank, local_leaves.len());
-    // 3. Complete minimal tree on each process, and find blocks.
-    let blocks = find_blocks(
+    // assert!(local_min < local_max);
+
+    // println!("RANK {} min {:?} max {:?}", rank, local_min, local_max);
+    // println!("RANK {} nleaves {:?}", rank, local_leaves.len());
+
+
+    // 3. Complete minimal tree on each process, and find seed octants.
+    let seeds = find_seeds(
         rank,
         local_leaves,
         &depth
     );
 
-    println!("RANK {} BLOCKS {:?}", rank, blocks);
+    // // Debugging code
+    // println!("RANK {} SEEDS {:?}", rank, seeds);
+    // assert!(Key(0, 4, 4, 1) < Key(4, 0, 4, 1));
 
     // 4. Complete minimal block-tree across processes
+    let root = Key(0, 0, 0, 0);
+    let dld_root = find_deepest_last_descendent(&root, &depth);
+    let dfd_root = find_deepest_first_descendent(&root, &depth);
+    println!("DLD ROOT {:?} DEPTH {}", dld_root, depth);
+    println!("DFD ROOT {:?} DEPTH {}", dfd_root, depth);
 
     // 5. Rebalance blocks based on load
 

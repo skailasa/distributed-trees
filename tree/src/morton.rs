@@ -376,7 +376,7 @@ mod tests {
         // c/∈{D(b)}, a<d<c ∀d ∈{D(b)}.
         let a = Key(0, 0, 0, 1);
         let ds = find_children(&a, &depth);
-        let mut bs = find_siblings(&a, &depth);
+        let bs = find_siblings(&a, &depth);
 
         for d in ds {
             assert!(a < d);
