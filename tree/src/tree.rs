@@ -13,6 +13,11 @@ use mpi::{
 };
 
 use crate::morton::{
+    MAX_POINTS,
+    Leaf,
+    Leaves,
+    LeafPoints, // Testing
+    Ke, // Testing
     Key,
     Keys,
     find_ancestors,
@@ -49,6 +54,44 @@ unsafe impl Equivalence for Key {
 }
 
 
+unsafe impl Equivalence for Leaf {
+    type Out = UserDatatype;
+    fn equivalent_datatype() -> Self::Out {
+        UserDatatype::structured(
+            &[1, 1],
+            &[
+                offset_of!(Leaf, key) as Address,
+                offset_of!(Leaf, points) as Address,
+            ],
+            &[
+                UncommittedUserDatatype::structured(
+                    &[1, 1, 1, 1],
+                    &[
+                        offset_of!(Key, 0) as Address,
+                        offset_of!(Key, 1) as Address,
+                        offset_of!(Key, 2) as Address,
+                        offset_of!(Key, 3) as Address,
+                    ],
+                    &[
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                    ],
+                ).as_ref(),
+                UncommittedUserDatatype::structured(
+                    &[MAX_POINTS as i32],
+                    &[
+                        offset_of!(LeafPoints, 0) as Address
+                    ],
+                    &[f64::equivalent_datatype()],
+                ).as_ref()
+            ],
+        )
+    }
+}
+
+
 #[derive(Debug, Copy, Clone)]
 pub struct Weight(pub u64);
 pub type Weights = Vec<Weight>;
@@ -65,12 +108,39 @@ unsafe impl Equivalence for Weight {
 }
 
 
+#[derive(Debug, Copy, Clone)]
+pub struct Block(pub u64, pub u64, pub u64, pub u64);
+pub type Blocks = Vec<Block>;
+
+
+unsafe impl Equivalence for Block {
+    type Out = UserDatatype;
+    fn equivalent_datatype() -> Self::Out {
+        UserDatatype::structured(
+            &[1, 1, 1, 1],
+            &[
+                offset_of!(Block, 0) as Address,
+                offset_of!(Block, 1) as Address,
+                offset_of!(Block, 2) as Address,
+                offset_of!(Block, 3) as Address,
+            ],
+            &[
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+            ],
+        )
+    }
+}
+
+
 /// Merge two sorted vectors of Morton keys
 ///
 /// # Arguments
 /// `a` - Sorted vector of Morton keys
 /// `b` - Sorted vector of Morton keys
-fn merge(a: &Keys, b: &Keys) -> Vec<Key> {
+fn merge(a: &Leaves, b: &Leaves) -> Vec<Leaf> {
 
     let mut merged = Vec::new();
 
@@ -78,7 +148,7 @@ fn merge(a: &Keys, b: &Keys) -> Vec<Key> {
     let mut pt_b : usize = 0;
 
     while pt_a < a.len() && pt_b < b.len() {
-        if a[pt_a] < b[pt_b] {
+        if a[pt_a].key < b[pt_b].key {
             merged.push(a[pt_a].clone());
             pt_a += 1;
         } else {
@@ -176,12 +246,12 @@ pub fn compute_partner(rank: i32, phase: i32, nprocs: i32) -> i32 {
 
 /// Perform parallel sort on leaves, dominates complexity of algorithm
 pub fn parallel_morton_sort(
-    mut local_leaves: Keys,
-    mut received_leaves: Keys,
+    mut local_leaves: Leaves,
+    mut received_leaves: Leaves,
     world: SystemCommunicator,
     rank: i32,
     nprocs: u16,
-) -> Keys {
+) -> Leaves {
     // Guaranteed to converge in nprocs phases
     for phase in 0..nprocs {
 
@@ -197,19 +267,20 @@ pub fn parallel_morton_sort(
             // println!("Rank {}, received: {:?}  sent {:?}", rank, received_leaves, local_leaves);
 
             // Perform merge, excluding sentinel from received leaves
-            let mut received: Keys = received_leaves.iter()
-                                                .filter(|&k| k.3 != SENTINEL)
+            let mut received: Leaves = received_leaves.iter()
+                                                      .filter(|&k| k.key.3 != SENTINEL)
+                                                      .cloned()
+                                                      .collect();
+
+            let mut local: Leaves = local_leaves.iter()
+                                                .filter(|&k| k.key.3 != SENTINEL)
                                                 .cloned()
                                                 .collect();
-
-            let mut local: Keys = local_leaves.iter()
-                                          .filter(|&k| k.3 != SENTINEL)
-                                          .cloned()
-                                          .collect();
 
             // Input to merge must be sorted
             local.sort();
             received.sort();
+
             let merged = merge(&local, &received);
 
             let mid = middle(merged.len());
@@ -317,16 +388,16 @@ pub fn find_seeds(
 
 
 /// Remove overlaps from a sorted list of octants, algorithm 7 in Sundar et. al.
-pub fn linearise(keys: &Keys, depth: &u64) -> Keys {
+pub fn linearise(keys: &Leaves, depth: &u64) -> Leaves {
 
-    let mut linearised: Keys = Vec::new();
+    let mut linearised: Leaves = Vec::new();
     for i in 0..(keys.len()-1) {
-        let curr = keys[i];
-        let next = keys[i+1];
+        let curr = keys[i].key;
+        let next = keys[i+1].key;
         let ancestors_next: HashSet<Key> = find_ancestors(&next, depth).into_iter()
                                                                        .collect();
         if !ancestors_next.contains(&curr) {
-            linearised.push(curr)
+            linearised.push(keys[i].clone())
         }
     }
     linearised
@@ -427,8 +498,8 @@ pub fn find_block_weights(
 
 
 /// Re-partition the blocks so that amount of computation on
-/// each node is balanced
-pub fn block_partition(
+/// each node is balanced, based on Algorithm 1 in Sundar et. al.
+pub fn partition_blocks(
     weights: Weights,
     local_blocktree: &mut Keys,
     nprocs: u16,
@@ -472,7 +543,7 @@ pub fn block_partition(
         local_cumulative_weights[i] = Weight(sum+cumulative_weight-local_weight as u64)
     }
 
-        let p: u64= (rank+1) as u64;
+    let p: u64= (rank+1) as u64;
     let next_rank = if rank + 1 < size { rank + 1 } else { 0 };
     let previous_rank = if rank > 0 { rank - 1 } else { size - 1 };
 

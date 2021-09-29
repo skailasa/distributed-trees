@@ -1,13 +1,18 @@
+use std::fmt;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::collections::HashSet;
 
 use rayon::prelude::*;
 
+/// Maximum points for allocation of leaf point array
+pub const MAX_POINTS: usize = 50;
+pub const SENTINELf64: f64 = 999.;
 
 type PointType = f64;
 /// Cartesian physical coordinates (x, y, z) of a given point.
 #[derive(Clone, Copy, Debug)]
+
 pub struct Point(pub PointType, pub PointType, pub PointType);
 pub type Points = Vec<Point>;
 
@@ -18,6 +23,30 @@ type KeyType = u64;
 pub struct Key(pub KeyType, pub KeyType, pub KeyType, pub KeyType);
 pub type Keys = Vec<Key>;
 
+// Struct holding point data for a given leaf
+#[derive(Clone, Debug)]
+pub struct LeafPoints(pub [Point; MAX_POINTS]);
+
+/// 20 bits each for (x, y, z) indices from anchor representation of Morton key,
+/// 4 bits for level data.
+#[derive(Clone, Debug)]
+pub struct Leaf{
+    pub key: Key,
+    pub points: LeafPoints
+}
+
+impl std::fmt::Display for Leaf {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+
+        let npoints = self.points.0.iter().filter(|&p| p.0 != SENTINELf64).count();
+
+        write!(f, "key: {:?}, npoints: {}", self.key, npoints)
+    }
+}
+
+
+pub type Leaves = Vec<Leaf>;
+
 
 /// Test Morton keys for equality.
 fn equal(a: &Key, b: &Key) -> Option<bool> {
@@ -25,6 +54,11 @@ fn equal(a: &Key, b: &Key) -> Option<bool> {
     Some(result)
 }
 
+
+
+#[derive(Clone, Debug)]
+pub struct Ke(pub KeyType, pub KeyType, pub KeyType, pub KeyType, pub LeafPoints);
+pub type Kes = Vec<Ke>;
 
 /// Subroutine in less than function, equivalent to comparing floor of log_2(x).
 /// Adapted from T.Chan Chan, T. "Closest-point problems simplified on the RAM",
@@ -103,6 +137,50 @@ impl Hash for Key {
         self.1.hash(state);
         self.2.hash(state);
         self.3.hash(state);
+    }
+}
+
+
+impl Ord for Leaf {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl PartialOrd for Leaf {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let less = less_than(&self.key, &other.key).unwrap();
+        let eq = self.eq(&other);
+
+        match eq {
+            true => Some(Ordering::Equal),
+            false => {
+                match less {
+                    true => Some(Ordering::Less),
+                    false => Some(Ordering::Greater)
+                }
+            }
+        }
+    }
+}
+
+impl PartialEq for Leaf {
+    fn eq(&self, other: &Self) -> bool {
+        let result = equal(&self.key, &other.key).unwrap();
+        result
+    }
+}
+
+impl Eq for Leaf {}
+
+/// A unique hash for a Morton key is simply it's four components.
+impl Hash for Leaf {
+
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key.0.hash(state);
+        self.key.1.hash(state);
+        self.key.2.hash(state);
+        self.key.3.hash(state);
     }
 }
 

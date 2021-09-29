@@ -1,4 +1,5 @@
 use std::time::{SystemTime};
+use std::cmp::Ordering;
 
 use itertools::Itertools;
 use mpi::traits::*;
@@ -12,6 +13,12 @@ use mpi::{
 
 use tree::data::{random};
 use tree::morton::{
+    MAX_POINTS,
+    SENTINELf64,
+    Leaf,
+    Leaves,
+    LeafPoints,
+    Ke,
     Key,
     Keys,
     Point,
@@ -26,14 +33,15 @@ use tree::tree::{
     linearise,
     complete_blocktree,
     find_block_weights,
-    block_partition
+    partition_blocks
 };
+
 
 
 fn main() {
 
-    // 0.i Setup Experiment and Distribute Leaves.
-    let start = SystemTime::now();
+    // // 0 Setup Experiment and Distribute Particle Data.
+    // let start = SystemTime::now();
 
     let universe = mpi::initialize().unwrap();
     let world = universe.world();
@@ -45,33 +53,58 @@ fn main() {
 
     let nprocs : u16 = std::env::var("NPROCS").unwrap().parse().unwrap();
     let depth: u64 = std::env::var("DEPTH").unwrap().parse().unwrap();
-    let npoints = std::env::var("NPOINTS").unwrap().parse().unwrap();
+    let npoints: u64 = std::env::var("NPOINTS").unwrap().parse().unwrap();
+    let x0 = Point(0.5, 0.5, 0.5);
+    let r0 = 0.5;
 
     // Maximum possible buffer size
     let bufsize: usize = f64::powf(8.0, depth as f64) as usize;
 
     // Buffer for keys local to this process
-    let mut local_leaves = vec![Key(0, 0, 0, SENTINEL); bufsize];
+
+    // 1. Generate random points on each process
+    let points = random(npoints);
+    let keys = encode_points(&points, &depth, &depth, &x0, &r0);
+    let mut points_to_keys: Vec<_> = points.iter().zip(keys.iter()).collect();
+    points_to_keys.sort_by(|a, b| a.1.cmp(b.1));
 
     // Buffer for receiving partner keys
-    let mut received_leaves = vec![Key(0, 0, 0, SENTINEL); bufsize];
+    let empty_points = LeafPoints([Point(SENTINELf64, SENTINELf64, SENTINELf64); MAX_POINTS]);
+    let mut received_leaves = vec![Leaf{key: Key(0, 0, 0, SENTINEL), points: empty_points}; bufsize];
 
+    let mut curr = Key(SENTINEL, SENTINEL, SENTINEL, SENTINEL);
+    let mut local_tree: Keys = Vec::new();
+    let mut leaf_indices: Vec<usize> = Vec::new();
 
-    // 1. Generate random points on each process.
-    let points = random(npoints);
-    let x0 = Point(0.5, 0.5, 0.5);
-    let r0 = 0.5;
-    let keys = encode_points(&points, &depth, &depth, &x0, &r0);
+    for (i, &(_, &key)) in points_to_keys.iter().enumerate() {
+        if curr != key {
+            curr = key;
+            local_tree.push(curr);
+            leaf_indices.push(i)
+        }
+    }
 
+    leaf_indices.push(points_to_keys.len());
 
-    let local_tree: Keys = keys.iter()
-                               .unique()
-                               .cloned()
-                               .collect();
+    let mut local_leaves: Leaves = Vec::new();
 
-    // println!("RANK {} nleaves in total {}", rank, local_tree.len());
+    // Fill up buffer of local leaf keys
     for (i, k) in local_tree.iter().enumerate() {
-        local_leaves[i] = k.clone();
+        // local_leaves[i] = k.clone();
+        let mut points = LeafPoints([Point(SENTINELf64, SENTINELf64, SENTINELf64); MAX_POINTS]);
+        let lidx = leaf_indices[i];
+        let ridx = leaf_indices[i+1];
+
+        for idx in lidx..ridx {
+            let jdx = ridx-1-idx;
+            points.0[jdx] = points_to_keys[idx].0.clone();
+        }
+
+        let leaf = Leaf{
+            key: Key(k.0, k.1, k.2, k.3),
+            points: points
+        };
+        local_leaves.push(leaf);
     }
 
     // 2. Perform parallel Morton sort over leaves
@@ -84,74 +117,72 @@ fn main() {
     );
 
     // 3. Remove duplicates at each processor and remove overlaps if there are any
-    local_leaves = local_leaves.iter()
-                               .unique()
-                               .cloned()
-                               .collect();
+    // local_leaves = local_leaves.iter()
+    //                            .unique()
+    //                            .cloned()
+    //                            .collect();
 
-    let local_leaves = linearise(&local_leaves, &depth);
 
-    // // Debugging code
-    // let local_min = local_leaves.iter().min().unwrap().clone();
-    // let local_max = local_leaves.iter().max().unwrap().clone();
-    // for &leaf in &local_leaves {
-    //     if (leaf != local_max) & (leaf != local_min) {
-    //         assert!((local_min < leaf) & (leaf < local_max));
-    //     }
-    // }
+    // let min = local_leaves.iter().min().unwrap();
+    // let max = local_leaves.iter().max().unwrap();
+    // println!("rank {}, local leaves min {:?}", rank, min);
 
-    // assert!(local_min < local_max);
+    // let local_leaves = linearise(&local_leaves, &depth);
 
-    // println!("RANK {} min {:?} max {:?}", rank, local_min, local_max);
-    // println!("RANK {} nleaves {:?}", rank, local_leaves.len());
-
+    println!("rank {}, local leaves max {:?} nleaves {}", rank, local_leaves.iter().max().unwrap().key, local_leaves.len());
+    println!("rank {}, local leaves min {:?} nleaves {}", rank, local_leaves.iter().min().unwrap().key, local_leaves.len());
 
     // 3. Complete minimal tree on each process, and find seed octants.
-    let mut seeds = find_seeds(
-        &local_leaves,
-        &depth
-    );
+    // let mut seeds = find_seeds(
+    //     &local_leaves,
+    //     &depth
+    // );
 
-    // // Debugging code
-    // println!("RANK {} SEEDS {:?}", rank, seeds);
-    // assert!(Key(0, 4, 4, 1) < Key(4, 0, 4, 1));
+    // // 4. Complete minimal block-tree across processes
+    // let mut local_blocktree = complete_blocktree(
+    //     &mut seeds,
+    //     &depth,
+    //     rank,
+    //     nprocs,
+    //     world,
+    // );
 
-    // 4. Complete minimal block-tree across processes
+    // let mut weights = find_block_weights(&local_leaves, &local_blocktree, &depth);
 
-    let mut local_blocktree = complete_blocktree(
-        &mut seeds,
-        &depth,
-        rank,
-        nprocs,
-        world,
-    );
+    // // 5. Re-balance blocks based on load
+    // partition_blocks(
+    //     weights,
+    //     &mut local_blocktree,
+    //     nprocs,
+    //     rank,
+    //     size,
+    //     world,
+    // );
 
-    let mut weights = find_block_weights(&local_leaves, &local_blocktree, &depth);
-
-    // Debugging code
-    // println!("RANK {} LOCAL_BLOCKTREE {:?} ", rank, local_blocktree.len());
-    // // println!("RANK {} LOCAL_TREE {:?} ", rank, local_leaves);
-    // println!("RANK {} weights {:?} ", rank, weights);
-    // // println!("RANK {} LOCAL_SEEDS{:?} ", rank, seeds);
-
-    // 5. Re-balance blocks based on load
-    block_partition(
-        weights,
-        &mut local_blocktree,
-        nprocs,
-        rank,
-        size,
-        world,
-    );
-
-    println!("rank {} final blocks {:?}", rank, local_blocktree);
+    // println!("rank {} final blocks {:?}", rank, local_blocktree);
     // 6. Send points for blocks to each process
 
+    // let mut points = [Point(0., 0., 0.); 500];
+    // let rnd = random(1);
+    // for (i, &point) in rnd.iter().enumerate() {
+    //     points[i] = point.clone();
+    // }
+
+    // let test_points = LeafPoints(points);
+
+    // let ke = Leaf(rank as u64, 0, 0, 0, test_points.clone());
+    // let mut buf = Leaf(rank as u64, 0, 0, 0, test_points.clone());
+    // let next_rank = if rank + 1 < size { rank + 1 } else { 0 };
+    // let next_process = world.process_at_rank(next_rank);
+
+    // p2p::send_receive_into(&ke, &next_process, &mut buf, &next_process);
+
+    // println!("rank {} partner rank {}", rank, next_rank);
+    // println!("received at rank {} the msg {:?}", rank, buf);
 
     // 7. Split blocks into adaptive tree, and pass into Octree structure.
 
     // 8. Compute interaction lists for each Octree
 
     // 9? Balance
-
 }
