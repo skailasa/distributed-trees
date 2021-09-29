@@ -4,7 +4,7 @@ Distributed Octrees in Rust, construction inspired by [1, 2].
 
 # Representation of Nodes
 
-Node index coordinates are represented using bit-interleaved __Morton Keys__ [1], chosen for their spatial locality properties. We store them in component form in a tuple struct, consisting of an absolute coordinate - known as the anchor - of the lower left corner, and their level,
+Node index coordinates are represented using __Morton Keys__ [1], chosen for their spatial locality properties. We store them in component form in a tuple struct, consisting of an absolute coordinate - known as the anchor - of the lower left corner, and their level,
 
 ```rust
 // Initialise a Morton key (x, y, z, l)
