@@ -1,13 +1,13 @@
 use rand::{Rng};
 
-use crate::morton::{Point, Points};
+use crate::morton::{Point, PointsVec};
 
-/// Generate random distribution of points in range [0, 1),
+/// Generate random distribution of PointsVec in range [0, 1),
 /// for testing.
-pub fn random(npoints: u64) -> Points {
+pub fn random(npoints: u64) -> PointsVec {
     let mut range = rand::thread_rng();
 
-    let mut points : Points = Vec::new();
+    let mut points : PointsVec = Vec::new();
 
     for _ in 0..npoints {
         let x : f64 = range.gen();
@@ -16,5 +16,5 @@ pub fn random(npoints: u64) -> Points {
         points.push(Point(x, y, z));
     }
 
-    points
+   points
 }

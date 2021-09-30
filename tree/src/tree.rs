@@ -15,6 +15,8 @@ use mpi::{
 use crate::morton::{
     Key,
     Keys,
+    Leaf,
+    Leaves,
     find_ancestors,
     find_descendents,
     find_children,
@@ -25,29 +27,6 @@ use crate::morton::{
 
 pub const SENTINEL: u64 = 999;
 pub const MPI_PROC_NULL: i32 = -1;
-
-/// Implement MPI equivalent datatype for Morton keys
-unsafe impl Equivalence for Key {
-    type Out = UserDatatype;
-    fn equivalent_datatype() -> Self::Out {
-        UserDatatype::structured(
-            &[1, 1, 1, 1],
-            &[
-                offset_of!(Key, 0) as Address,
-                offset_of!(Key, 1) as Address,
-                offset_of!(Key, 2) as Address,
-                offset_of!(Key, 3) as Address,
-            ],
-            &[
-                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
-                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
-                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
-                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
-            ],
-        )
-    }
-}
-
 
 #[derive(Debug, Copy, Clone)]
 pub struct Weight(pub u64);
@@ -65,12 +44,12 @@ unsafe impl Equivalence for Weight {
 }
 
 
-/// Merge two sorted vectors of Morton keys
+/// Merge two sorted vectors of Morton Leaves
 ///
 /// # Arguments
-/// `a` - Sorted vector of Morton keys
-/// `b` - Sorted vector of Morton keys
-fn merge(a: &Keys, b: &Keys) -> Vec<Key> {
+/// `a` - Sorted vector of Morton Leaves
+/// `b` - Sorted vector of Morton Leaves
+fn merge(a: &Leaves, b: &Leaves) -> Leaves {
 
     let mut merged = Vec::new();
 
@@ -176,12 +155,12 @@ pub fn compute_partner(rank: i32, phase: i32, nprocs: i32) -> i32 {
 
 /// Perform parallel sort on leaves, dominates complexity of algorithm
 pub fn parallel_morton_sort(
-    mut local_leaves: Keys,
-    mut received_leaves: Keys,
+    mut local_leaves: Leaves,
+    mut received_leaves: Leaves,
     world: SystemCommunicator,
     rank: i32,
     nprocs: u16,
-) -> Keys {
+) -> Leaves {
     // Guaranteed to converge in nprocs phases
     for phase in 0..nprocs {
 
@@ -197,19 +176,20 @@ pub fn parallel_morton_sort(
             // println!("Rank {}, received: {:?}  sent {:?}", rank, received_leaves, local_leaves);
 
             // Perform merge, excluding sentinel from received leaves
-            let mut received: Keys = received_leaves.iter()
-                                                .filter(|&k| k.3 != SENTINEL)
+            let mut received: Leaves = received_leaves.iter()
+                                                      .filter(|&k| k.key.3 != SENTINEL)
+                                                      .cloned()
+                                                      .collect();
+
+            let mut local: Leaves = local_leaves.iter()
+                                                .filter(|&l| l.key.3 != SENTINEL)
                                                 .cloned()
                                                 .collect();
-
-            let mut local: Keys = local_leaves.iter()
-                                          .filter(|&k| k.3 != SENTINEL)
-                                          .cloned()
-                                          .collect();
 
             // Input to merge must be sorted
             local.sort();
             received.sort();
+
             let merged = merge(&local, &received);
 
             let mid = middle(merged.len());
@@ -224,7 +204,6 @@ pub fn parallel_morton_sort(
             }
         }
     }
-
     local_leaves.sort();
     local_leaves
 }
@@ -274,6 +253,67 @@ pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
 
     minimal_tree.sort();
     minimal_tree
+}
+
+
+/// Find unique leaves, and merge together their point sets.
+pub fn unique_leaves(mut leaves: Leaves) -> Leaves {
+
+    // Container for result
+    let mut unique: Leaves = Vec::new();
+
+    // Sort leaves
+    leaves.sort();
+
+    let mut leaf_indices: Vec<usize> = Vec::new();
+    let mut nunique = 0;
+    let mut curr = Leaf::default();
+
+    for (i, leaf) in leaves.iter().enumerate() {
+
+        if curr != *leaf {
+            curr = leaf.clone();
+            leaf_indices.push(i);
+            nunique += 1;
+        }
+    }
+
+    leaf_indices.push(leaves.len());
+
+    for i in 0..nunique {
+
+        let lidx = leaf_indices[i as usize];
+        let ridx = leaf_indices[(i+1) as usize];
+
+        // Pick out leaves in this range, and combine their points
+        let mut acc = leaves[lidx].clone();
+
+        let mut points_idx = acc.npoints() as usize;
+
+
+        for j in (lidx+1)..ridx {
+            let npoints = leaves[j].npoints() as usize;
+
+
+
+            for k in 0..npoints {
+
+                if (points_idx+k) >= MAX_POINTS {
+                    panic!(
+                        "You are packing too many points into leaf,
+                        you need to increase the depth of your tree!"
+                    )
+                }
+
+                acc.points.0[points_idx+k] = leaves[j].points.0[k];
+            }
+
+            points_idx += npoints;
+
+        }
+        unique.push(acc);
+    }
+    unique
 }
 
 
@@ -523,5 +563,53 @@ pub fn block_partition(
     }
 
     local_blocktree.extend(&received_blocks);
+
+}
+
+
+use crate::morton::{Point, PointsArray, MAX_POINTS};
+
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn test_unique_panic() {
+        // Test that you cannot overpack a unique leaf when merging leaves.
+        let mut leaves: Leaves = vec![
+            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
+        ];
+
+        for mut leaf in &mut leaves {
+            for i in 0..150 {
+                leaf.points.0[i] = Point(0., 0., 0.);
+            }
+        }
+
+        let unique = unique_leaves(leaves);
+    }
+
+    #[test]
+    fn test_unique() {
+        let mut leaves: Leaves = vec![
+            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
+        ];
+
+        for mut leaf in &mut leaves {
+            for i in 0..4 {
+                leaf.points.0[i] = Point(0., 0., 0.);
+            }
+        }
+
+        let unique = unique_leaves(leaves);
+
+        assert_eq!(unique[0].npoints(), 16)
+    }
 
 }

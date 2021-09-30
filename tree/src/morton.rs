@@ -2,14 +2,27 @@ use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::collections::HashSet;
 
+use memoffset::offset_of;
+
+use mpi::{
+    Address,
+    datatype::{Equivalence, UserDatatype, UncommittedUserDatatype},
+};
+
+use crate::tree::SENTINEL;
+
 use rayon::prelude::*;
 
+pub const MAX_POINTS: usize = 150;
 
 type PointType = f64;
 /// Cartesian physical coordinates (x, y, z) of a given point.
 #[derive(Clone, Copy, Debug)]
 pub struct Point(pub PointType, pub PointType, pub PointType);
-pub type Points = Vec<Point>;
+pub type PointsVec = Vec<Point>;
+
+#[derive(Clone, Copy, Debug)]
+pub struct PointsArray(pub [Point; MAX_POINTS]);
 
 type KeyType = u64;
 /// 20 bits each for (x, y, z) indices from anchor representation of Morton key,
@@ -19,10 +32,64 @@ pub struct Key(pub KeyType, pub KeyType, pub KeyType, pub KeyType);
 pub type Keys = Vec<Key>;
 
 
+/// Leaf keys additionally bundle particle coordinate data.
+#[derive(Clone, Debug)]
+pub struct Leaf{
+    pub key: Key,
+    pub points: PointsArray
+}
+pub type Leaves = Vec<Leaf>;
+
+/// Default implementations
+impl Default for Key {
+    fn default() -> Self {
+        Key(SENTINEL, SENTINEL, SENTINEL, 0)
+    }
+}
+
+impl Default for Point {
+    fn default() -> Self {
+        Point(PointType::NAN, PointType::NAN, PointType::NAN)
+    }
+}
+
+impl Default for PointsArray {
+    fn default() -> Self {
+        let default = Point::default();
+        let points = [default; MAX_POINTS];
+        PointsArray(points)
+    }
+}
+
+impl Default for Leaf {
+    fn default() -> Self {
+        Leaf{
+            key: Key::default(),
+            points: PointsArray::default()
+        }
+    }
+}
+
+
+impl Leaf {
+    pub fn npoints(&self) -> u64 {
+        let npoints = self.points.0.iter()
+                                   .filter(
+                                       |&&n| {
+                                           !n.0.is_nan()
+                                           & !n.1.is_nan()
+                                           & !n.2.is_nan()
+                                       }
+                                    )
+                                   .count();
+        npoints as u64
+    }
+}
+
+
 /// Test Morton keys for equality.
-fn equal(a: &Key, b: &Key) -> Option<bool> {
-    let result = (a.0 == b.0) & (a.1 == b.1) & (a.2 == b.2) & (a.3 == b.3);
-    Some(result)
+fn equal(a: &Key, b: &Key) -> bool {
+    (a.0 == b.0) & (a.1 == b.1) & (a.2 == b.2) & (a.3 == b.3)
 }
 
 
@@ -88,7 +155,7 @@ impl PartialOrd for Key {
 
 impl PartialEq for Key {
     fn eq(&self, other: &Self) -> bool {
-        let result = equal(self, other).unwrap();
+        let result = equal(self, other);
         result
     }
 }
@@ -105,6 +172,120 @@ impl Hash for Key {
         self.3.hash(state);
     }
 }
+
+
+impl Ord for Leaf {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl PartialOrd for Leaf {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let less = less_than(&self.key, &other.key).unwrap();
+        let eq = self.eq(&other);
+
+        match eq {
+            true => Some(Ordering::Equal),
+            false => {
+                match less {
+                    true => Some(Ordering::Less),
+                    false => Some(Ordering::Greater)
+                }
+            }
+        }
+    }
+}
+
+impl PartialEq for Leaf {
+    fn eq(&self, other: &Self) -> bool {
+        let result = equal(&self.key, &other.key);
+        result
+    }
+}
+
+impl Eq for Leaf {}
+
+impl PartialEq for Point {
+    fn eq(&self, other: &Self) -> bool {
+        (self.0 == other.0) & (self.1 == other.1) & (other.2  == other.2)
+    }
+}
+
+impl Eq for Point {}
+
+/// A unique hash for a Morton key is simply it's four components.
+impl Hash for Leaf {
+
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key.0.hash(state);
+        self.key.1.hash(state);
+        self.key.2.hash(state);
+        self.key.3.hash(state);
+    }
+}
+
+/// Implement MPI equivalent datatype for Morton keys
+unsafe impl Equivalence for Key {
+    type Out = UserDatatype;
+    fn equivalent_datatype() -> Self::Out {
+        UserDatatype::structured(
+            &[1, 1, 1, 1],
+            &[
+                offset_of!(Key, 0) as Address,
+                offset_of!(Key, 1) as Address,
+                offset_of!(Key, 2) as Address,
+                offset_of!(Key, 3) as Address,
+            ],
+            &[
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+            ],
+        )
+    }
+}
+
+
+/// Implement MPI equivalent datatype for Leaf keys
+unsafe impl Equivalence for Leaf {
+    type Out = UserDatatype;
+    fn equivalent_datatype() -> Self::Out {
+        UserDatatype::structured(
+            &[1, 1],
+            &[
+                offset_of!(Leaf, key) as Address,
+                offset_of!(Leaf, points) as Address,
+            ],
+            &[
+                UncommittedUserDatatype::structured(
+                    &[1, 1, 1, 1],
+                    &[
+                        offset_of!(Key, 0) as Address,
+                        offset_of!(Key, 1) as Address,
+                        offset_of!(Key, 2) as Address,
+                        offset_of!(Key, 3) as Address,
+                    ],
+                    &[
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                    ],
+                ).as_ref(),
+                UncommittedUserDatatype::structured(
+                    &[MAX_POINTS as i32],
+                    &[
+                        offset_of!(PointsArray, 0) as Address
+                    ],
+                    &[f64::equivalent_datatype()],
+                ).as_ref()
+            ],
+        )
+    }
+}
+
 
 
 /// Subroutine for finding the parent of a Morton key in its component
@@ -219,7 +400,7 @@ pub fn encode_point(
 /// Encode a vector of physical point coordinates into their corresponding
 /// Morton keys, in parallel.
 pub fn encode_points(
-    points: &Points, level: &u64, depth: &u64, x0: &Point, r0: &f64
+    points: &PointsVec, level: &u64, depth: &u64, x0: &Point, r0: &f64
 ) -> Keys {
 
     let keys = points.par_iter()
@@ -322,8 +503,60 @@ pub fn find_descendents(key: &Key, level: &u64, depth: &u64) -> Keys {
     descendents
 }
 
+
+/// Convert keys corresponding to a point set, to leaves.
+pub fn keys_to_leaves(mut keys: Keys, points: PointsVec) -> Leaves {
+
+    // Only works if keys are sorted.
+    keys.sort();
+
+    let mut points_to_keys: Vec<_> = points.iter().zip(keys.iter()).collect();
+    points_to_keys.sort_by(|a, b| a.1.cmp(b.1));
+
+    let mut curr = Key(SENTINEL, SENTINEL, SENTINEL, SENTINEL);
+    let mut unique_keys: Keys = Vec::new();
+    let mut key_indices: Vec<usize> = Vec::new();
+
+    for (i, &(_, &key)) in points_to_keys.iter().enumerate() {
+        if curr != key {
+            curr = key;
+            unique_keys.push(curr);
+            key_indices.push(i)
+        }
+    }
+
+    key_indices.push(points_to_keys.len());
+
+    let mut leaves: Leaves = Vec::new();
+
+    // Fill up buffer of leaf keys
+    for (i, key) in unique_keys.iter().enumerate() {
+        // local_leaves[i] = k.clone();
+        let mut points = PointsArray([Point::default(); MAX_POINTS]);
+        let lidx = key_indices[i];
+        let ridx = key_indices[i+1];
+
+        for j in lidx..ridx {
+            let k = ridx-1-j;
+            points.0[k] = points_to_keys[j].0.clone();
+        }
+
+        let leaf = Leaf{
+            key: Key(key.0, key.1, key.2, key.3),
+            points: points
+        };
+        leaves.push(leaf);
+    }
+    leaves
+}
+
+
 mod tests {
     use super::*;
+
+    use itertools::Itertools;
+
+    use crate::data::random;
 
     #[test]
     fn test_find_parent() {
@@ -472,5 +705,36 @@ mod tests {
         let mut result = find_ancestors(&key, &depth);
         result.sort();
         assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_npoints() {
+        let mut leaf = Leaf{key: Key::default(), points: PointsArray::default()};
+
+        assert_eq!(leaf.npoints(), 0);
+    }
+
+    #[test]
+    fn test_keys_to_leaves() {
+
+        let npoints = 800;
+        let points = random(npoints);
+        let level = 1;
+        let depth = 1;
+        let x0 = Point(0.5, 0.5, 0.5);
+        let r0 = 0.5;
+        let keys = encode_points(&points, &level, &depth, &x0, &r0);
+        let unique_keys: Keys = keys.iter().unique().cloned().collect();
+        let leaves = keys_to_leaves(keys, points);
+
+        // Test that no keys are dropped
+        assert_eq!(unique_keys.len(), leaves.len());
+
+        // Test that no points are dropped
+        let mut nleaf_points = 0;
+        for leaf in leaves {
+            nleaf_points += leaf.npoints();
+        }
+        assert_eq!(npoints, nleaf_points);
     }
 }
