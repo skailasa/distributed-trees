@@ -14,7 +14,6 @@ const K: usize = 10;
 
 
 pub fn sample_sort(
-    depth: u64,
     local_leaves: &Leaves,
     nprocs: u16,
     rank: Rank,
@@ -26,7 +25,8 @@ pub fn sample_sort(
 
      let mut received_samples = vec![Leaf::default(); K*(nprocs as usize)];
     let nleaves = local_leaves.len();
-    // 1. Collect 'k' samples from each process that isn't the root.
+
+    // 1. Collect 'K' samples from each process onto all other processes
     let mut rng = thread_rng();
     let sample_idxs: Vec<usize> = (0..K).map(|_| rng.gen_range(0..nleaves)).collect();
 
@@ -36,19 +36,13 @@ pub fn sample_sort(
         local_samples[i] = local_leaves[sample_idx].clone();
     }
 
-    // println!("rank {} sample_idxs {:?}", rank, sample_idxs );
-    // for s in &local_samples {
-    //     println!("rank {} local samples {:?}", rank, s.key);
-    // }
-
     world.all_gather_into(&local_samples[..], &mut received_samples[..]);
 
-    // Ignore first k samples to ensure (nproc-1) splitters
+    // Ignore first K samples to ensure (nproc-1) splitters
     received_samples.sort();
     received_samples = received_samples[K..].to_vec();
 
-
-    // Every k'th sample defines a bucket.
+    // Every K'th sample defines a bucket.
     let splitters: Leaves = received_samples.iter()
                                                 .step_by(K)
                                                 .cloned()
@@ -56,7 +50,6 @@ pub fn sample_sort(
     let nsplitters = splitters.len();
 
     // 2. Sort local leaves into buckets
-
     let mut buckets: Vec<Leaves> = vec![Vec::new(); nprocs as usize];
 
     for leaf in local_leaves.iter() {
@@ -75,7 +68,6 @@ pub fn sample_sort(
     }
 
     // 3. Send all local buckets to their matching processor.
-
     for i in 0..(nprocs as i32) {
 
         if rank != i {

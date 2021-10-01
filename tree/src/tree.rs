@@ -4,7 +4,6 @@ use memoffset::offset_of;
 use mpi::{
     Address,
     datatype::{Equivalence, UserDatatype, UncommittedUserDatatype},
-    Count,
     point_to_point as p2p,
     traits::*,
     topology::{Rank, SystemCommunicator},
@@ -12,19 +11,19 @@ use mpi::{
 };
 
 use crate::morton::{
+    MAX_POINTS,
     Key,
     Keys,
     Leaf,
     Leaves,
     find_ancestors,
-    find_descendents,
+    find_descendants,
     find_children,
     find_finest_common_ancestor,
     find_deepest_first_descendent,
     find_deepest_last_descendent
 };
 
-pub const SENTINEL: u64 = 999;
 pub const MPI_PROC_NULL: i32 = -1;
 
 #[derive(Debug, Copy, Clone)]
@@ -40,201 +39,6 @@ unsafe impl Equivalence for Weight {
             &[UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref()]
         )
     }
-}
-
-
-/// Merge two sorted vectors of Morton Leaves
-///
-/// # Arguments
-/// `a` - Sorted vector of Morton Leaves
-/// `b` - Sorted vector of Morton Leaves
-fn merge(a: &Leaves, b: &Leaves) -> Leaves {
-
-    let mut merged = Vec::new();
-
-    let mut pt_a : usize = 0;
-    let mut pt_b : usize = 0;
-
-    while pt_a < a.len() && pt_b < b.len() {
-        if a[pt_a] < b[pt_b] {
-            merged.push(a[pt_a].clone());
-            pt_a += 1;
-        } else {
-            merged.push(b[pt_b].clone());
-            pt_b += 1;
-        }
-    }
-
-    merged.append(&mut a[pt_a..].to_vec());
-    merged.append(&mut b[pt_b..].to_vec());
-
-    merged
-}
-
-
-/// Calculate the middle element of a vector
-fn middle(nelems: usize) -> usize {
-
-    if nelems % 2 == 0 {
-        (nelems / 2) as usize
-    } else {
-        ((nelems - 1)/2) as usize
-    }
-}
-
-/// MPI Load calculations, and memory displacements for distributing octree
-#[derive(Debug)]
-pub struct Load {
-    pub counts : Vec<Count>,
-    pub displs : Vec<Count>,
-}
-
-/// Non optimal load balance of a given number of tasks using a given
-/// number of of processes.
-///
-/// # Arguments
-/// * `ntasks` - Number of tasks
-/// * `nprocs` - Number of processors
-pub fn balance_load(ntasks: u16, nprocs: u16) -> Load {
-
-    let tasks_per_process : f32 = ntasks as f32 / nprocs as f32;
-    let tasks_per_process : i32 = tasks_per_process.ceil() as i32;
-    let remainder : i32 = (ntasks as i32) - (tasks_per_process*((nprocs-1) as i32));
-
-    let mut counts: Vec<Count> = vec![tasks_per_process; nprocs as usize];
-    counts[(nprocs-1) as usize] = remainder;
-
-    let displs: Vec<Count> = counts
-        .iter()
-        .scan(0, |acc, &x| {
-            let tmp = *acc;
-            *acc += x;
-            Some(tmp)
-        })
-        .collect();
-
-    Load {
-        counts,
-        displs
-    }
-}
-
-
-/// Compute rank of the partner process in odd/even sort algorithm
-/// for the given process.
-///
-/// # Arguments
-/// `rank` - MPI rank of the given process
-/// `phase` - Phase of the odd/even sort algorithm
-/// `nprocs` - Size of the MPI communicator being used
-pub fn compute_partner(rank: i32, phase: i32, nprocs: i32) -> i32 {
-
-    let mut partner;
-
-    if (phase % 2) == 0 {
-        if rank % 2 != 0 {
-            partner = rank - 1;
-        } else {
-            partner = rank + 1;
-        }
-    } else {
-        if rank % 2 != 0 {
-            partner = rank + 1;
-        } else {
-            partner = rank - 1;
-        }
-    };
-
-    if partner == -1 || partner == nprocs  {
-        partner = MPI_PROC_NULL;
-    }
-    partner
-}
-
-
-/// Perform parallel sort on leaves, dominates complexity of algorithm
-pub fn parallel_morton_sort(
-    mut local_leaves: Leaves,
-    mut received_leaves: Leaves,
-    world: SystemCommunicator,
-    rank: i32,
-    nprocs: u16,
-) -> Leaves {
-
-
-    // Guaranteed to converge in nprocs phases
-    for phase in 0..(3*nprocs) {
-
-        let partner = compute_partner(rank, phase as i32, nprocs as i32);
-
-        // Send local leaves to partner, and receive their leaves
-        if partner != MPI_PROC_NULL {
-
-            let partner_process = world.process_at_rank(partner);
-
-            p2p::send_receive_into(&local_leaves[..], &partner_process, &mut received_leaves[..], &partner_process);
-
-
-            // Perform merge, excluding sentinel from received leaves
-            let mut received: Leaves = received_leaves.iter()
-                                                      .filter(|&k| k.key != Key::default())
-                                                      .cloned()
-                                                      .collect();
-
-            // let mut local: Leaves = local_leaves.iter()
-            //                                     .filter(|&l| l.key != Key::default())
-            //                                     .cloned()
-            //                                     .collect();
-
-
-            local_leaves.append(&mut received);
-            // Input to merge must be sorted
-            // local.sort();
-            // received.sort();
-
-            // println!("rank: {} nlocal {}", rank, local.len());
-            // println!("rank: {} nrecieved {}", rank, received.len());
-
-            // local_leaves.append(&mut received_leaves);
-
-
-
-            // println!("after rank {} nlocal {}", rank, local.len());
-
-            let mut local = local_leaves;
-            local.sort();
-            let min = local.iter().min().unwrap().key;
-            let max = local.iter().max().unwrap().key;
-            let mid = middle(local.len());
-
-
-            if rank < partner {
-                // Keep smaller keys
-                // println!("phase {} rank {} keeping upto {:?} nlocal {:?}", phase, rank, local[0].key, local.len());
-                // println!("phase {} rank {} min {:?} max {:?}", phase, rank, min, max);
-                local_leaves = local[..mid].to_vec();
-
-            } else {
-                // println!("phase {} rank {} keeping from {:?} nlocal {}", phase, rank, local[0].key, local.len());
-                // println!("phase {} rank {} min {:?} max {:?}", phase, rank, min, max);
-                // Keep larger keys
-                local_leaves = local[mid..].to_vec();
-            }
-        }
-        println!("phase {} rank: {} currently nleaves {}", phase, rank, local_leaves.len());
-
-    }
-
-
-    local_leaves.sort();
-
-    // for leaf in &local_leaves {
-    //     println!("{:?} {}", leaf.key, leaf.npoints());
-
-    // }
-    // println!("]\n");
-
-    local_leaves
 }
 
 
@@ -349,13 +153,13 @@ pub fn unique_leaves(mut leaves: Leaves) -> Leaves {
 /// Find coarsest 'seeds' at each processor. These are used to seed
 /// The construction of a minimal block octree in Algorithm 4 of Sundar et. al.
 pub fn find_seeds(
-    local_leaves: &Keys,
+    local_leaves: &Leaves,
     depth: &u64
 ) -> Keys {
 
     // Find least and greatest leaves on processor
-    let min: Key = local_leaves.iter().min().unwrap().clone();
-    let max: Key = local_leaves.iter().max().unwrap().clone();
+    let min: Key = local_leaves.iter().min().unwrap().key.clone();
+    let max: Key = local_leaves.iter().max().unwrap().key.clone();
 
     // Complete region between least and greatest leaves
     let complete = complete_region(&min, &max, depth);
@@ -372,14 +176,14 @@ pub fn find_seeds(
     }
 
     let seed_idxs: Vec<usize> = complete.iter()
-                                         .enumerate()
-                                         .filter(|&(_, &value)| value.3 == coarsest_level)
-                                         .map(|(index, _)| index)
-                                         .collect();
+                                        .enumerate()
+                                        .filter(|&(_, &value)| value.3 == coarsest_level)
+                                        .map(|(index, _)| index)
+                                        .collect();
 
     let seeds: Keys = seed_idxs.iter()
-                                 .map(|&i| complete[i])
-                                 .collect();
+                               .map(|&i| complete[i])
+                               .collect();
 
     seeds
 }
@@ -467,20 +271,21 @@ pub fn complete_blocktree(
 
 
 pub fn find_block_weights(
-    local_leaves: &Keys,
+    local_leaves: &Leaves,
     local_blocktree: &Keys,
     depth: &u64,
 ) -> Weights {
 
     let local_leaves_set: HashSet<Key> = local_leaves.into_iter()
-                                                     .cloned()
+                                                     .map(|l| l.key)
+                                                     .clone()
                                                      .collect();
 
     let mut weights: Weights = vec![Weight(0); local_blocktree.len()];
 
     for (i, block) in local_blocktree.iter().enumerate() {
         let level = block.3;
-        let descendents = find_descendents(&block, &level, &depth);
+        let descendents = find_descendants(&block, &level, &depth);
 
         let mut w = 0;
 
@@ -575,12 +380,12 @@ pub fn block_partition(
     let next_process = world.process_at_rank(next_rank);
     let previous_process = world.process_at_rank(previous_rank);
 
-    let mut received_blocks: Keys = vec![Key(0, 0, 0, SENTINEL); total_nblocks];
+    let mut received_blocks: Keys = vec![Key::default(); total_nblocks];
 
     p2p::send_receive_into(&q[..], &previous_process, &mut received_blocks[..], &next_process);
 
     received_blocks = received_blocks.iter()
-                                     .filter(|b| b.3 != SENTINEL)
+                                     .filter(|&&b| b != Key::default())
                                      .cloned()
                                      .collect();
 
@@ -596,10 +401,10 @@ pub fn block_partition(
 }
 
 
-use crate::morton::{Point, PointsArray, MAX_POINTS};
-
 mod tests {
     use super::*;
+
+    use crate::morton::{Point, PointsArray, MAX_POINTS};
 
     #[test]
     #[should_panic]

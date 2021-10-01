@@ -9,11 +9,11 @@ use mpi::{
     datatype::{Equivalence, UserDatatype, UncommittedUserDatatype},
 };
 
-use crate::tree::SENTINEL;
 
 use rayon::prelude::*;
 
 pub const MAX_POINTS: usize = 150;
+pub const SENTINEL: KeyType = 999;
 
 type PointType = f64;
 /// Cartesian physical coordinates (x, y, z) of a given point.
@@ -482,7 +482,7 @@ pub fn find_deepest_last_descendent(
     }
 }
 
-pub fn find_descendents(key: &Key, level: &u64, depth: &u64) -> Keys {
+pub fn find_descendants(key: &Key, level: &u64, depth: &u64) -> Keys {
 
     let mut descendents: Keys = vec![key.clone()];
     let mut level_diff = depth-level;
@@ -552,9 +552,7 @@ pub fn keys_to_leaves(mut keys: Keys, points: PointsVec) -> Leaves {
 
 mod tests {
     use super::*;
-
     use itertools::Itertools;
-
     use crate::data::random;
 
     #[test]
