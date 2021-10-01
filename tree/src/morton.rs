@@ -155,8 +155,7 @@ impl PartialOrd for Key {
 
 impl PartialEq for Key {
     fn eq(&self, other: &Self) -> bool {
-        let result = equal(self, other);
-        result
+        equal(self, other)
     }
 }
 
@@ -183,7 +182,7 @@ impl Ord for Leaf {
 impl PartialOrd for Leaf {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let less = less_than(&self.key, &other.key).unwrap();
-        let eq = self.eq(&other);
+        let eq = self.eq(other);
 
         match eq {
             true => Some(Ordering::Equal),
@@ -199,8 +198,7 @@ impl PartialOrd for Leaf {
 
 impl PartialEq for Leaf {
     fn eq(&self, other: &Self) -> bool {
-        let result = equal(&self.key, &other.key);
-        result
+        equal(&self.key, &other.key)
     }
 }
 
@@ -208,7 +206,7 @@ impl Eq for Leaf {}
 
 impl PartialEq for Point {
     fn eq(&self, other: &Self) -> bool {
-        (self.0 == other.0) & (self.1 == other.1) & (other.2  == other.2)
+        (self.0 == other.0) & (self.1 == other.1) & (self.2  == other.2)
     }
 }
 
@@ -296,12 +294,7 @@ unsafe impl Equivalence for Leaf {
 /// the parent's key's level, and the maximum depth of the tree.
 fn odd_index(idx: u64, parent_level_diff: u64) -> bool {
     let factor = 1 << parent_level_diff;
-
-    if (idx % factor) == 0 {
-        false
-    } else {
-        true
-    }
+    (idx % factor) != 0
 }
 
 
@@ -542,8 +535,9 @@ pub fn keys_to_leaves(mut keys: Keys, points: PointsVec) -> Leaves {
 
         let leaf = Leaf{
             key: Key(key.0, key.1, key.2, key.3),
-            points: points
+            points
         };
+
         leaves.push(leaf);
     }
     leaves

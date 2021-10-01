@@ -127,8 +127,6 @@ pub fn unique_leaves(mut leaves: Leaves) -> Leaves {
         for j in (lidx+1)..ridx {
             let npoints = leaves[j].npoints() as usize;
 
-
-
             for k in 0..npoints {
 
                 if (points_idx+k) >= MAX_POINTS {
@@ -311,8 +309,8 @@ pub fn block_partition(
     world: SystemCommunicator,
 ) {
 
-    let mut local_weight = weights.iter().fold(0, |acc, x| acc + x.0);
-    let mut local_nblocks = local_blocktree.len();
+    let local_weight = weights.iter().fold(0, |acc, x| acc + x.0);
+    let local_nblocks = local_blocktree.len();
     let mut cumulative_weight = 0;
     let mut cumulative_nblocks = 0;
     let mut total_weight = 0;
