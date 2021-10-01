@@ -86,35 +86,25 @@ fn main() {
             world,
     );
 
-    let min = local_leaves.iter().min().unwrap().key;
-    let max = local_leaves.iter().max().unwrap().key;
 
-    // // 3. Remove duplicates at each processor and remove overlaps if there are any
-
+    // 3. Remove duplicates at each processor and remove overlaps if there are any
     let local_leaves = unique_leaves(local_leaves);
-    println!("RANK {} NLEAVES {:?}", rank, local_leaves.len());
-    println!("RANK {} LOCAL LEAVES MIN {:?} MAX {:?} nleaves {:?}", rank, min, max, local_leaves.len());
 
-    // // // Debugging code
-    // // let local_min = local_leaves.iter().min().unwrap().clone();
-    // // let local_max = local_leaves.iter().max().unwrap().clone();
-    // // for &leaf in &local_leaves {
-    // //     if (leaf != local_max) & (leaf != local_min) {
-    // //         assert!((local_min < leaf) & (leaf < local_max));
-    // //     }
-    // // }
+    // let min = local_leaves.iter().min().unwrap().key;
+    // let max = local_leaves.iter().max().unwrap().key;
+    // println!("RANK {} NLEAVES {:?}", rank, local_leaves.len());
+    // println!("RANK {} LOCAL LEAVES MIN {:?} MAX {:?} nleaves {:?}", rank, min, max, local_leaves.len());
+    // let mut npoints = 0;
+    // for leaf in &local_leaves {
+    //     npoints += leaf.npoints();
+    // }
+    // println!("RANK {} NPOINTS {:?}", rank, npoints);
 
-    // // assert!(local_min < local_max);
-
-    // // println!("RANK {} min {:?} max {:?}", rank, local_min, local_max);
-    // // println!("RANK {} nleaves {:?}", rank, local_leaves.len());
-
-
-    // // 3. Complete minimal tree on each process, and find seed octants.
-    // let mut seeds = find_seeds(
-    //     &local_leaves,
-    //     &depth
-    // );
+    // 3. Complete minimal tree on each process, and find seed octants.
+    let mut seeds = find_seeds(
+        &local_leaves,
+        &depth
+    );
 
     // // // Debugging code
     // // println!("RANK {} SEEDS {:?}", rank, seeds);

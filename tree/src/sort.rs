@@ -2,14 +2,12 @@ use rand::{thread_rng, Rng};
 
 extern crate mpi;
 
-use::mpi::request;
-use mpi::traits::{Source, Destination, MatchedReceiveVec};
+use mpi::traits::{Source, Destination};
 use mpi::{topology::{Rank, SystemCommunicator}};
-use mpi::datatype::{MutView, UserDatatype, View};
 use mpi::traits::*;
-use mpi::Count;
 
-use crate::morton::{Leaf, Leaves, Key};
+
+use crate::morton::{Leaf, Leaves};
 
 // Sample density
 const K: usize = 10;
@@ -30,7 +28,7 @@ pub fn sample_sort(
     let nleaves = local_leaves.len();
     // 1. Collect 'k' samples from each process that isn't the root.
     let mut rng = thread_rng();
-    let mut sample_idxs: Vec<usize> = (0..K).map(|_| rng.gen_range(0..nleaves)).collect();
+    let sample_idxs: Vec<usize> = (0..K).map(|_| rng.gen_range(0..nleaves)).collect();
 
     let mut local_samples: Leaves = vec![Leaf::default(); K];
 
@@ -51,20 +49,13 @@ pub fn sample_sort(
 
 
     // Every k'th sample defines a bucket.
-    let mut splitters: Leaves = received_samples.iter()
+    let splitters: Leaves = received_samples.iter()
                                                 .step_by(K)
                                                 .cloned()
                                                 .collect();
-
     let nsplitters = splitters.len();
 
-    let max = received_samples.iter().max().unwrap().clone();
-
     // 2. Sort local leaves into buckets
-
-    let min = received_samples.iter().min().unwrap().clone().key;
-    // println!("rank {} local leaves {:?} {:?}", rank, min, max.key);
-    // println!("rank {} splitter {:?} {}", rank, splitters.iter().min().unwrap().key, splitters.len());
 
     let mut buckets: Vec<Leaves> = vec![Vec::new(); nprocs as usize];
 
@@ -92,23 +83,16 @@ pub fn sample_sort(
             world.process_at_rank(i).send(&msg[..]);
         } else {
             for _ in 1..world.size() {
-                let (mut msg, status) = world.any_process().receive_vec::<Leaf>();
-                // println!(
-                //     "Process {} got long message {:?}.\nStatus is: {:?}",
-                //     rank, msg.len(), status
-                // );
-
+                let (mut msg, _) = world.any_process().receive_vec::<Leaf>();
                 received_leaves.append(&mut msg);
             }
         }
         world.barrier();
     }
 
-
-
     // 4. Sort leaves on matching processors.
+    received_leaves.append(&mut buckets[rank as usize]);
     received_leaves.sort();
-
     received_leaves
 }
 
