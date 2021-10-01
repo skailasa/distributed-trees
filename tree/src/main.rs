@@ -1,16 +1,18 @@
+use itertools::Itertools;
 use std::time::{SystemTime};
 
 use mpi::traits::*;
 
 use mpi::{
-    collective::SystemOperation,
-    point_to_point as p2p,
-    topology::{Rank}
+    topology::{Rank},
+    datatype::Partition,
+    Count,
 };
 
 
 use tree::data::{random};
 use tree::morton::{
+    Key,
     MAX_POINTS,
     Leaf,
     Keys,
@@ -27,8 +29,12 @@ use tree::tree::{
     linearise,
     complete_blocktree,
     find_block_weights,
-    block_partition
+    block_partition,
+    balance_load,
+    unique_leaves
 };
+
+use tree::sort::{sample_sort};
 
 
 fn main() {
@@ -37,7 +43,7 @@ fn main() {
     let nprocs : u16 = std::env::var("NPROCS").unwrap().parse().unwrap_or(2);
     let depth: u64 = std::env::var("DEPTH").unwrap().parse().unwrap_or(3);
     let npoints = std::env::var("NPOINTS").unwrap().parse().unwrap_or(1000);
-    let ncrit = std::env::var("NCRIT").unwrap().parse().unwrap_or(MAX_POINTS);
+    // let ncrit = std::env::var("NCRIT").unwrap().parse().unwrap_or(MAX_POINTS);
 
     // Start timer
     let start = SystemTime::now();
@@ -54,36 +60,40 @@ fn main() {
     // Maximum possible buffer size
     let bufsize: usize = f64::powf(8.0, depth as f64) as usize;
 
-    // Buffer for keys local to this process
-    let mut local_leaves = vec![Leaf::default(); bufsize];
-
     // Buffer for receiving partner keys
     let mut received_leaves = vec![Leaf::default(); bufsize];
 
-    // 1. Generate random points on each process.
+    // 1. Generate random test points on a given process.
     let points = random(npoints);
     let x0 = Point(0.5, 0.5, 0.5);
     let r0 = 0.5;
     let keys = encode_points(&points, &depth, &depth, &x0, &r0);
-    let local_leaves = keys_to_leaves(keys, points);
+    let mut local_leaves = keys_to_leaves(keys, points);
+
+    // // Filter local leaves
+    local_leaves = local_leaves.iter()
+                               .filter(|&k| k.key != Key::default())
+                               .cloned()
+                               .collect();
 
 
-    // // 2. Perform parallel Morton sort over leaves
-    // let mut local_leaves = parallel_morton_sort(
-    //     local_leaves,
-    //     received_leaves,
-    //     world,
-    //     rank,
-    //     nprocs,
-    // );
+    // 2. Perform parallel Morton sort over leaves
+    let mut local_leaves = sample_sort(
+            depth,
+            &local_leaves,
+            nprocs,
+            rank,
+            world,
+    );
+
+    let min = local_leaves.iter().min().unwrap().key;
+    let max = local_leaves.iter().max().unwrap().key;
 
     // // 3. Remove duplicates at each processor and remove overlaps if there are any
-    // local_leaves = local_leaves.iter()
-    //                            .unique()
-    //                            .cloned()
-    //                            .collect();
 
-    // let local_leaves = linearise(&local_leaves, &depth);
+    let local_leaves = unique_leaves(local_leaves);
+    println!("RANK {} NLEAVES {:?}", rank, local_leaves.len());
+    println!("RANK {} LOCAL LEAVES MIN {:?} MAX {:?} nleaves {:?}", rank, min, max, local_leaves.len());
 
     // // // Debugging code
     // // let local_min = local_leaves.iter().min().unwrap().clone();

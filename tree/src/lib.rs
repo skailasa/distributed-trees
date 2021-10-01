@@ -10,3 +10,5 @@ pub mod tree;
 
 /// Data manipulation and generation tools.
 pub mod data;
+
+pub mod sort;

@@ -275,7 +275,7 @@ unsafe impl Equivalence for Leaf {
                     ],
                 ).as_ref(),
                 UncommittedUserDatatype::structured(
-                    &[MAX_POINTS as i32],
+                    &[(MAX_POINTS*3) as i32],
                     &[
                         offset_of!(PointsArray, 0) as Address
                     ],
@@ -285,7 +285,6 @@ unsafe impl Equivalence for Leaf {
         )
     }
 }
-
 
 
 /// Subroutine for finding the parent of a Morton key in its component

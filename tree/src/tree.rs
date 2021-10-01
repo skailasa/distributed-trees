@@ -7,9 +7,8 @@ use mpi::{
     Count,
     point_to_point as p2p,
     traits::*,
-    topology::{SystemCommunicator},
+    topology::{Rank, SystemCommunicator},
     collective::SystemOperation,
-    topology::{Rank}
 };
 
 use crate::morton::{
@@ -161,8 +160,10 @@ pub fn parallel_morton_sort(
     rank: i32,
     nprocs: u16,
 ) -> Leaves {
+
+
     // Guaranteed to converge in nprocs phases
-    for phase in 0..nprocs {
+    for phase in 0..(3*nprocs) {
 
         let partner = compute_partner(rank, phase as i32, nprocs as i32);
 
@@ -173,38 +174,66 @@ pub fn parallel_morton_sort(
 
             p2p::send_receive_into(&local_leaves[..], &partner_process, &mut received_leaves[..], &partner_process);
 
-            // println!("Rank {}, received: {:?}  sent {:?}", rank, received_leaves, local_leaves);
 
             // Perform merge, excluding sentinel from received leaves
             let mut received: Leaves = received_leaves.iter()
-                                                      .filter(|&k| k.key.3 != SENTINEL)
+                                                      .filter(|&k| k.key != Key::default())
                                                       .cloned()
                                                       .collect();
 
-            let mut local: Leaves = local_leaves.iter()
-                                                .filter(|&l| l.key.3 != SENTINEL)
-                                                .cloned()
-                                                .collect();
+            // let mut local: Leaves = local_leaves.iter()
+            //                                     .filter(|&l| l.key != Key::default())
+            //                                     .cloned()
+            //                                     .collect();
 
+
+            local_leaves.append(&mut received);
             // Input to merge must be sorted
+            // local.sort();
+            // received.sort();
+
+            // println!("rank: {} nlocal {}", rank, local.len());
+            // println!("rank: {} nrecieved {}", rank, received.len());
+
+            // local_leaves.append(&mut received_leaves);
+
+
+
+            // println!("after rank {} nlocal {}", rank, local.len());
+
+            let mut local = local_leaves;
             local.sort();
-            received.sort();
+            let min = local.iter().min().unwrap().key;
+            let max = local.iter().max().unwrap().key;
+            let mid = middle(local.len());
 
-            let merged = merge(&local, &received);
-
-            let mid = middle(merged.len());
 
             if rank < partner {
                 // Keep smaller keys
-                local_leaves = merged[..mid].to_vec();
+                // println!("phase {} rank {} keeping upto {:?} nlocal {:?}", phase, rank, local[0].key, local.len());
+                // println!("phase {} rank {} min {:?} max {:?}", phase, rank, min, max);
+                local_leaves = local[..mid].to_vec();
 
             } else {
+                // println!("phase {} rank {} keeping from {:?} nlocal {}", phase, rank, local[0].key, local.len());
+                // println!("phase {} rank {} min {:?} max {:?}", phase, rank, min, max);
                 // Keep larger keys
-                local_leaves = merged[mid..].to_vec();
+                local_leaves = local[mid..].to_vec();
             }
         }
+        println!("phase {} rank: {} currently nleaves {}", phase, rank, local_leaves.len());
+
     }
+
+
     local_leaves.sort();
+
+    // for leaf in &local_leaves {
+    //     println!("{:?} {}", leaf.key, leaf.npoints());
+
+    // }
+    // println!("]\n");
+
     local_leaves
 }
 
