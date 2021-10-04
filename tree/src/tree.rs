@@ -17,7 +17,6 @@ use crate::morton::{
     Leaf,
     Leaves,
     find_ancestors,
-    find_descendants,
     find_children,
     find_finest_common_ancestor,
     find_deepest_first_descendent,
@@ -326,15 +325,15 @@ pub fn assign_blocks_to_leaves(
     depth: &u64,
 ) {
 
+    let local_blocktree_set: HashSet<Key> = local_blocktree.iter().cloned().collect();
+
     for leaf in local_leaves.iter_mut() {
 
-        for block in local_blocktree {
-            let descs = find_descendants(&block, &block.3, &depth);
-            let min = descs.iter().min().unwrap();
-            let max = descs.iter().max().unwrap();
-
-            if (&leaf.key >= min) & (&leaf.key <= max) {
-                leaf.block = block.clone();
+        let ancestors = find_ancestors(&leaf.key, depth);
+        for ancestor in ancestors {
+            if local_blocktree_set.contains(&ancestor) {
+                leaf.block = ancestor.clone();
+                break
             }
         }
     }

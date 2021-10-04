@@ -1,4 +1,4 @@
-use std::time::{SystemTime};
+use std::time::{SystemTime, Instant};
 
 use mpi::{point_to_point as p2p};
 use mpi::traits::*;
@@ -6,12 +6,7 @@ use mpi::traits::*;
 use tree::data::{random};
 use tree::morton::{
     Key,
-    Keys,
-    Leaf,
-    Leaves,
     Point,
-    find_ancestors,
-    find_descendants,
     encode_points,
     keys_to_leaves,
 };
@@ -44,10 +39,7 @@ fn main() {
     let rank = world.rank();
     let size = world.size();
 
-    // Start timer on root process
-    if rank == 0 {
-        let start = SystemTime::now();
-    }
+    let start = Instant::now();
 
     // 1. Generate random test points on a given process.
     let points = random(npoints);
@@ -108,6 +100,26 @@ fn main() {
         &depth,
     );
 
+    // println!("blocks_{}=np.array([", rank);
+    // for block in local_blocktree {
+    //     println!("[{}, {}, {}, {}],", block.0, block.1, block.2, block.3);
+    // }
+    // println!("])");
+
+    // let mut found = Vec::new();
+
+    // for leaf in local_leaves {
+    //     if !found.contains(&leaf.block) {
+    //         found.push(leaf.block);
+    //     }
+    // }
+
+    // println!("found_{}=np.array([", rank);
+    // for block in found {
+    //     println!("[{}, {}, {}, {}],", block.0, block.1, block.2, block.3);
+    // }
+    // println!("])");
+
     let weights = find_block_weights(
         &local_leaves,
         &local_blocktree,
@@ -141,8 +153,6 @@ fn main() {
     // 9? Balance
 
     // Print runtime to stdout
-    if rank == 0 {
-        let runtime = SystemTime::now().elapsed().unwrap();
-        println!("RUNTIME: {:?}", runtime);
-    }
+    world.barrier();
+    println!("RANK {} RUNTIME: {:?}", rank, start.elapsed().as_secs());
 }
