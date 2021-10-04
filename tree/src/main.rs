@@ -1,19 +1,28 @@
 use std::time::{SystemTime};
 
+use mpi::{point_to_point as p2p};
 use mpi::traits::*;
 
 use tree::data::{random};
 use tree::morton::{
     Key,
+    Keys,
+    Leaf,
+    Leaves,
     Point,
+    find_ancestors,
+    find_descendants,
     encode_points,
     keys_to_leaves,
 };
 
 use tree::tree::{
-    find_seeds,
-    complete_blocktree,
     find_block_weights,
+    find_seeds,
+    transfer_leaves_to_final_blocktree,
+    transfer_leaves_to_coarse_blocktree,
+    complete_blocktree,
+    assign_blocks_to_leaves,
     block_partition,
     unique_leaves
 };
@@ -63,15 +72,27 @@ fn main() {
     );
 
     // 3. Remove duplicates at each processor and remove overlaps if there are any
-    let local_leaves = unique_leaves(local_leaves);
+    let mut local_leaves = unique_leaves(local_leaves);
 
-    // 4. Complete minimal tree on each process, and find seed octants.
+    // 4.i Complete minimal tree on each process, and find seed octants.
     let mut seeds = find_seeds(
         &local_leaves,
         &depth
     );
 
-    // 5 Complete minimal block-tree across processes
+    // 4.ii If leaf is less than the minimum seed in a given process,
+    // it needs to be sent to the previous process
+    local_leaves.sort();
+
+    let mut local_leaves = transfer_leaves_to_coarse_blocktree(
+        &local_leaves,
+        &seeds,
+        rank,
+        world,
+        nprocs as i32,
+    );
+
+    // 5. Complete minimal block-tree across processes
     let mut local_blocktree = complete_blocktree(
         &mut seeds,
         &depth,
@@ -80,28 +101,38 @@ fn main() {
         world,
     );
 
-    let weights = find_block_weights(&local_leaves, &local_blocktree, &depth);
-
     // Associate leaves with blocks
-    // ...
+    assign_blocks_to_leaves(
+        &mut local_leaves,
+        &local_blocktree,
+        &depth,
+    );
 
-    // 6. Re-balance blocks based on load
-    // block_partition(
-    //     weights,
-    //     &mut local_blocktree,
-    //     nprocs,
-    //     rank,
-    //     size,
-    //     world,
-    // );
+    let weights = find_block_weights(
+        &local_leaves,
+        &local_blocktree,
+    );
 
-    println!("blocks_{} = np.array([", rank);
-    for s in local_blocktree {
-        println!("[{}, {}, {}, {}],", s.0, s.1, s.2, s.3);
-    }
-    println!("])");
+    // 6.i Re-balance blocks based on load, find out which blocks were sent to partner.
+    let sent_blocks = block_partition(
+            weights,
+            &mut local_blocktree,
+            nprocs,
+            rank,
+            size,
+            world,
+        );
 
-    // 6. Send leafs to their associated process via their block.
+    // 6.ii For each sent block, send corresponding leaves to partner process.
+    let local_leaves = transfer_leaves_to_final_blocktree(
+        &sent_blocks,
+        local_leaves,
+        nprocs,
+        rank,
+        world,
+    );
+
+    println!("RANK {} final {}", rank, local_leaves.len());
 
     // 7. Split blocks into adaptive tree, and pass into Octree structure.
 

@@ -186,6 +186,57 @@ pub fn find_seeds(
     seeds
 }
 
+/// Transfer leaves based on seeds.
+pub fn transfer_leaves_to_coarse_blocktree(
+    local_leaves: &Leaves,
+    seeds: &Keys,
+    rank: Rank,
+    world: SystemCommunicator,
+    nprocs: i32,
+) -> Leaves {
+
+    let mut min_seed = Key::default();
+    if rank == 0 {
+        min_seed = local_leaves.iter().min().unwrap().key.clone();
+    } else {
+        min_seed = seeds.iter().min().unwrap().clone();
+    }
+
+    let mut received: Leaves = Vec::new();
+
+    let prev_rank = rank -1;
+
+    let mut msg : Leaves = Vec::new();
+
+    let mut idx = 0;
+    let mut curr = local_leaves[idx].clone();
+
+
+    if rank > 0 {
+        let msg: Leaves = local_leaves.iter()
+                                      .filter(|&l| &l.key < &min_seed)
+                                      .cloned()
+                                      .collect();
+
+
+        world.process_at_rank(prev_rank).send(&msg[..]);
+    }
+
+    if rank < (nprocs as i32-1) {
+        let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
+        received.append(&mut rec);
+    }
+
+    let mut local_leaves: Leaves = local_leaves.iter()
+                                                .filter(|&l| &l.key >= &min_seed)
+                                                .cloned()
+                                                .collect();
+
+    local_leaves.append(&mut received);
+    local_leaves.sort();
+    local_leaves
+}
+
 
 /// Remove overlaps from a sorted list of octants, algorithm 7 in Sundar et. al.
 pub fn linearise(keys: &Keys, depth: &u64) -> Keys {
@@ -268,38 +319,107 @@ pub fn complete_blocktree(
 }
 
 
-pub fn find_block_weights(
-    local_leaves: &Leaves,
+/// Assign blocks to leaves within a certain range.
+pub fn assign_blocks_to_leaves(
+    local_leaves: &mut Leaves,
     local_blocktree: &Keys,
     depth: &u64,
-) -> Weights {
+) {
 
-    let local_leaves_set: HashSet<Key> = local_leaves.into_iter()
-                                                     .map(|l| l.key)
-                                                     .clone()
-                                                     .collect();
+    for leaf in local_leaves.iter_mut() {
 
-    let mut weights: Weights = vec![Weight(0); local_blocktree.len()];
+        for block in local_blocktree {
+            let descs = find_descendants(&block, &block.3, &depth);
+            let min = descs.iter().min().unwrap();
+            let max = descs.iter().max().unwrap();
 
-    for (i, block) in local_blocktree.iter().enumerate() {
-        let level = block.3;
-        let descendents = find_descendants(&block, &level, &depth);
-
-        let mut w = 0;
-
-        for d in descendents {
-            if local_leaves_set.contains(&d) {
-                w += 1;
+            if (&leaf.key >= min) & (&leaf.key <= max) {
+                leaf.block = block.clone();
             }
         }
-        weights[i] = Weight(w)
+    }
+}
+
+
+pub fn find_block_weights(
+    leaves: &Leaves,
+    blocktree: &Keys,
+) -> Weights {
+
+    let mut weights: Weights = Vec::new();
+
+    for &block in blocktree.iter() {
+        let counts: u64 = leaves.iter().filter(|&l| l.block == block).count() as u64;
+        weights.push(Weight(counts));
     }
     weights
 }
 
 
+/// Transfer leaves to correspond to the final load balanced blocktree
+pub fn transfer_leaves_to_final_blocktree(
+    sent_blocks: &Keys,
+    mut local_leaves: Leaves,
+    nprocs: u16,
+    rank: Rank,
+    world: SystemCommunicator,
+) -> Leaves {
+
+    let mut received: Leaves = Vec::new();
+    let mut msg: Leaves = Vec::new();
+
+    for &block in sent_blocks.iter() {
+        let mut to_send: Leaves = local_leaves.iter()
+                                      .filter(|&l| l.block == block)
+                                      .cloned()
+                                      .collect();
+        msg.append(&mut to_send);
+    }
+
+    // Remove these leaves from the local leaves
+    // println!("RANK {} BEFORE {}", rank, local_leaves.len());
+    for &block in sent_blocks.iter() {
+        local_leaves = local_leaves.iter()
+                                   .filter(|&l| l.block != block)
+                                   .cloned()
+                                   .collect();
+    }
+
+    // println!("RANK {} AFTER {}", rank, local_leaves.len());
+
+    for i in 0..((nprocs)  as i32) {
+        if i+1 < ((nprocs) as i32) {
+            if rank == (i+1) {
+                world.process_at_rank(i).send_with_tag(&msg[..], rank);
+            }
+            if rank == i {
+                let msg = world.any_process().probe_with_tag(i+1);
+                let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
+                // println!("RECEIVED {:?} at rank {} {} ", msg, rank, rec.len());
+                received.append(&mut rec);
+            }
+        } else {
+            if rank == 0 {
+                world.process_at_rank(i).send_with_tag(&msg[..], rank);
+            }
+            if rank == i {
+                let msg = world.any_process().probe_with_tag(0);
+                let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
+                // println!("RECEIVED {:?} at rank {} {} ", msg, rank, rec.len());
+                received.append(&mut rec);
+            }
+        }
+    }
+
+    // Append received leaves
+    local_leaves.append(&mut received);
+    local_leaves
+}
+
+
 /// Re-partition the blocks so that amount of computation on
-/// each node is balanced
+/// each node is balanced. Return mapping between block and rank to which
+/// it was sent.
 pub fn block_partition(
     weights: Weights,
     local_blocktree: &mut Keys,
@@ -307,7 +427,7 @@ pub fn block_partition(
     rank: i32,
     size: i32,
     world: SystemCommunicator,
-) {
+) -> Keys {
 
     let local_weight = weights.iter().fold(0, |acc, x| acc + x.0);
     let local_nblocks = local_blocktree.len();
@@ -344,7 +464,7 @@ pub fn block_partition(
         local_cumulative_weights[i] = Weight(sum+cumulative_weight-local_weight as u64)
     }
 
-        let p: u64= (rank+1) as u64;
+    let p: u64= (rank+1) as u64;
     let next_rank = if rank + 1 < size { rank + 1 } else { 0 };
     let previous_rank = if rank > 0 { rank - 1 } else { size - 1 };
 
@@ -387,15 +507,15 @@ pub fn block_partition(
                                      .cloned()
                                      .collect();
 
-
-    for sent in q {
+    for sent in &q {
         local_blocktree.iter()
-                       .position(|&n| n == sent)
+                       .position(|&n| n == *sent)
                        .map(|e| local_blocktree.remove(e));
     }
 
     local_blocktree.extend(&received_blocks);
 
+    q
 }
 
 
@@ -409,10 +529,10 @@ mod tests {
     fn test_unique_panic() {
         // Test that you cannot overpack a unique leaf when merging leaves.
         let mut leaves: Leaves = vec![
-            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
-            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
-            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
-            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), block: Key::default(), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), block: Key::default(), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), block: Key::default(), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), block: Key::default(), points: PointsArray([Point::default(); MAX_POINTS])},
         ];
 
         for mut leaf in &mut leaves {
@@ -427,10 +547,10 @@ mod tests {
     #[test]
     fn test_unique() {
         let mut leaves: Leaves = vec![
-            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
-            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
-            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
-            Leaf{key: Key(0, 0, 0, 1), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), block: Key::default(), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), block: Key::default(), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), block: Key::default(), points: PointsArray([Point::default(); MAX_POINTS])},
+            Leaf{key: Key(0, 0, 0, 1), block: Key::default(), points: PointsArray([Point::default(); MAX_POINTS])},
         ];
 
         for mut leaf in &mut leaves {

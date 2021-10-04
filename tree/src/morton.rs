@@ -31,11 +31,11 @@ type KeyType = u64;
 pub struct Key(pub KeyType, pub KeyType, pub KeyType, pub KeyType);
 pub type Keys = Vec<Key>;
 
-
 /// Leaf keys additionally bundle particle coordinate data.
 #[derive(Clone, Debug)]
 pub struct Leaf{
     pub key: Key,
+    pub block: Key,
     pub points: PointsArray
 }
 pub type Leaves = Vec<Leaf>;
@@ -65,6 +65,7 @@ impl Default for Leaf {
     fn default() -> Self {
         Leaf{
             key: Key::default(),
+            block: Key::default(),
             points: PointsArray::default()
         }
     }
@@ -204,14 +205,6 @@ impl PartialEq for Leaf {
 
 impl Eq for Leaf {}
 
-impl PartialEq for Point {
-    fn eq(&self, other: &Self) -> bool {
-        (self.0 == other.0) & (self.1 == other.1) & (self.2  == other.2)
-    }
-}
-
-impl Eq for Point {}
-
 /// A unique hash for a Morton key is simply it's four components.
 impl Hash for Leaf {
 
@@ -222,6 +215,14 @@ impl Hash for Leaf {
         self.key.3.hash(state);
     }
 }
+
+impl PartialEq for Point {
+    fn eq(&self, other: &Self) -> bool {
+        (self.0 == other.0) & (self.1 == other.1) & (self.2  == other.2)
+    }
+}
+
+impl Eq for Point {}
 
 /// Implement MPI equivalent datatype for Morton keys
 unsafe impl Equivalence for Key {
@@ -251,12 +252,28 @@ unsafe impl Equivalence for Leaf {
     type Out = UserDatatype;
     fn equivalent_datatype() -> Self::Out {
         UserDatatype::structured(
-            &[1, 1],
+            &[1, 1, 1],
             &[
                 offset_of!(Leaf, key) as Address,
+                offset_of!(Leaf, block) as Address,
                 offset_of!(Leaf, points) as Address,
             ],
             &[
+                UncommittedUserDatatype::structured(
+                    &[1, 1, 1, 1],
+                    &[
+                        offset_of!(Key, 0) as Address,
+                        offset_of!(Key, 1) as Address,
+                        offset_of!(Key, 2) as Address,
+                        offset_of!(Key, 3) as Address,
+                    ],
+                    &[
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype()).as_ref(),
+                    ],
+                ).as_ref(),
                 UncommittedUserDatatype::structured(
                     &[1, 1, 1, 1],
                     &[
@@ -535,6 +552,7 @@ pub fn keys_to_leaves(mut keys: Keys, points: PointsVec) -> Leaves {
 
         let leaf = Leaf{
             key: Key(key.0, key.1, key.2, key.3),
+            block: Key::default(),
             points
         };
 
@@ -700,7 +718,7 @@ mod tests {
 
     #[test]
     fn test_npoints() {
-        let mut leaf = Leaf{key: Key::default(), points: PointsArray::default()};
+        let mut leaf = Leaf{key: Key::default(), block: Key::default(), points: PointsArray::default()};
 
         assert_eq!(leaf.npoints(), 0);
     }
