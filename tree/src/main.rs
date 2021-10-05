@@ -14,7 +14,7 @@ use tree::tree::{
 fn main() {
     // 0.i Experimental Parameters
     let depth: u64 = std::env::var("DEPTH").unwrap().parse().unwrap_or(3);
-    let npoints = std::env::var("NPOINTS").unwrap().parse().unwrap_or(1000);
+    let npoints: u64 = std::env::var("NPOINTS").unwrap().parse().unwrap_or(1000);
 
     // 0.ii Setup Experiment and Distribute Leaves.
     let universe = mpi::initialize().unwrap();
@@ -78,5 +78,7 @@ fn main() {
 
     // Print runtime to stdout
     world.barrier();
-    println!("RANK {} RUNTIME: {:?}", rank, start.elapsed().as_secs());
+    if rank == 0 {
+        println!("RUNTIME: {:?} ms", start.elapsed().as_millis());
+    }
 }
