@@ -9,17 +9,21 @@ use mpi::{
 };
 use rayon::prelude::*;
 
+/// Maximum points per **Leaf**
 pub const MAX_POINTS: usize = 150;
-pub const SENTINEL: KeyType = 999;
+
+/// Used as an integer sentinel value.
+const SENTINEL: KeyType = 999;
 
 type PointType = f64;
 #[derive(Clone, Copy, Debug)]
 /// **Point**, Cartesian coordinates (x, y, z).
 pub struct Point(pub PointType, pub PointType, pub PointType);
+/// Vector of **Points**.
 pub type PointsVec = Vec<Point>;
 
 #[derive(Clone, Copy, Debug)]
-/// **Points Array**, fixed size of MAX_POINTS=150. Used for describing points contained in a given
+/// **Points Array**, fixed size of **MAX_POINTS**. Used for describing points contained in a given
 /// Leaf.
 pub struct PointsArray(pub [Point; MAX_POINTS]);
 
@@ -27,6 +31,7 @@ type KeyType = u64;
 #[derive(Clone, Copy, Debug)]
 /// **Morton Key**, anchor and level represented as (x, y, z, level).
 pub struct Key(pub KeyType, pub KeyType, pub KeyType, pub KeyType);
+/// Vector of **Keys**.
 pub type Keys = Vec<Key>;
 
 #[derive(Clone, Debug)]
@@ -36,6 +41,7 @@ pub struct Leaf {
     pub block: Key,
     pub points: PointsArray,
 }
+/// Vector of **Leaves**.
 pub type Leaves = Vec<Leaf>;
 
 impl Default for Key {
@@ -86,15 +92,13 @@ fn equal(a: &Key, b: &Key) -> bool {
     (a.0 == b.0) & (a.1 == b.1) & (a.2 == b.2) & (a.3 == b.3)
 }
 
-/// Subroutine in less than function, equivalent to comparing floor of log_2(x). Adapted from
-/// Chan, T. "Closest-point problems simplified on the RAM", ACM-SIAM Symposium on Discrete
-/// Algorithms (2002).
+/// Subroutine in less than function, equivalent to comparing floor of log_2(x). Adapted from [3].
 fn most_significant_bit(x: u64, y: u64) -> bool {
     (x < y) & (x < (x ^ y))
 }
 
-/// Implementation of Algorithm 12 in Sundar et. al. to compare the ordering of two **Morton Keys**
-/// If key `a` is less than key `b`, this function evaluates to true.
+/// Implementation of Algorithm 12 in [1]. to compare the ordering of two **Morton Keys**. If key
+/// `a` is less than key `b`, this function evaluates to true.
 fn less_than(a: &Key, b: &Key) -> Option<bool> {
     // If anchors match, the one at the coarser level has the lesser Morton id.
     let same_anchor = (a.0 == b.0) & (a.1 == b.1) & (a.2 == b.2);

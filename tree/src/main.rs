@@ -7,10 +7,10 @@ use tree::morton::{encode_points, keys_to_leaves, Key, Point};
 
 use tree::tree::{
     assign_blocks_to_leaves, block_partition, complete_blocktree, find_block_weights, find_seeds,
-    transfer_leaves_to_coarse_blocktree, transfer_leaves_to_final_blocktree, unique_leaves,
+    transfer_leaves_to_coarse_blocktree, transfer_leaves_to_final_blocktree, unique_leaves, sample_sort
 };
 
-use tree::sort::sample_sort;
+// use tree::sort::sample_sort;
 
 fn main() {
     // 0.i Experimental Parameters
@@ -44,7 +44,7 @@ fn main() {
     let local_leaves = sample_sort(&local_leaves, nprocs, rank, world);
 
     // 3. Remove duplicates at each processor and remove overlaps if there are any
-    let mut local_leaves = unique_leaves(local_leaves);
+    let mut local_leaves = unique_leaves(local_leaves, true);
 
     // 4.i Complete minimal tree on each process, and find seed octants.
     let mut seeds = find_seeds(&local_leaves, &depth);
