@@ -2,28 +2,25 @@ use rand::{thread_rng, Rng};
 
 extern crate mpi;
 
-use mpi::traits::{Source, Destination};
-use mpi::{topology::{Rank, SystemCommunicator}};
+use mpi::topology::{Rank, SystemCommunicator};
 use mpi::traits::*;
-
+use mpi::traits::{Destination, Source};
 
 use crate::morton::{Leaf, Leaves};
 
 // Sample density
 const K: usize = 10;
 
-
 pub fn sample_sort(
     local_leaves: &Leaves,
     nprocs: u16,
     rank: Rank,
-    world: SystemCommunicator
+    world: SystemCommunicator,
 ) -> Leaves {
-
     // Buffer for receiving partner keys
     let mut received_leaves: Leaves = Vec::new();
 
-     let mut received_samples = vec![Leaf::default(); K*(nprocs as usize)];
+    let mut received_samples = vec![Leaf::default(); K * (nprocs as usize)];
     let nleaves = local_leaves.len();
 
     // 1. Collect 'K' samples from each process onto all other processes
@@ -43,24 +40,20 @@ pub fn sample_sort(
     received_samples = received_samples[K..].to_vec();
 
     // Every K'th sample defines a bucket.
-    let splitters: Leaves = received_samples.iter()
-                                                .step_by(K)
-                                                .cloned()
-                                                .collect();
+    let splitters: Leaves = received_samples.iter().step_by(K).cloned().collect();
     let nsplitters = splitters.len();
 
     // 2. Sort local leaves into buckets
     let mut buckets: Vec<Leaves> = vec![Vec::new(); nprocs as usize];
 
     for leaf in local_leaves.iter() {
-
         for i in 0..(nprocs as usize) {
             if i < nsplitters {
                 let s = &splitters[i];
-                if leaf < s  {
+                if leaf < s {
                     buckets[i].push(leaf.clone());
                     break;
-            }
+                }
             } else {
                 buckets[i].push(leaf.clone())
             }
@@ -69,7 +62,6 @@ pub fn sample_sort(
 
     // 3. Send all local buckets to their matching processor.
     for i in 0..(nprocs as i32) {
-
         if rank != i {
             let msg = &buckets[i as usize];
             world.process_at_rank(i).send(&msg[..]);
@@ -87,6 +79,3 @@ pub fn sample_sort(
     received_leaves.sort();
     received_leaves
 }
-
-
-
