@@ -4,7 +4,6 @@ use memoffset::offset_of;
 use mpi::{
     collective::SystemOperation,
     datatype::{Equivalence, UncommittedUserDatatype, UserDatatype},
-    point_to_point as p2p,
     topology::{Rank, SystemCommunicator},
     traits::*,
     Address,
@@ -16,7 +15,7 @@ use crate::morton::{
     find_finest_common_ancestor, Key, Keys, Leaf, Leaves, MAX_POINTS,
 };
 
-/// Sample density for oversampled parallel Sample Sort implementation.
+/// Sample density for over sampled parallel Sample Sort implementation.
 const K: usize = 10;
 
 /// Null process marker for MPI functions.
@@ -47,6 +46,7 @@ pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
     let na = find_finest_common_ancestor(a, b, depth);
 
     let mut working_list: HashSet<Key> = find_children(&na, depth).into_iter().collect();
+
     let mut minimal_tree: Keys = Vec::new();
 
     loop {
@@ -55,7 +55,7 @@ pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
 
         for w in &working_list {
             if ((a < w) & (w < b)) & !ancestors_b.contains(w) {
-                aux_list.insert(w.clone());
+                aux_list.insert(*w);
                 len += 1;
             } else if ancestors_a.contains(w) | ancestors_b.contains(w) {
                 for child in find_children(w, depth) {
@@ -109,8 +109,8 @@ pub fn unique_leaves(mut leaves: Leaves, sorted: bool) -> Leaves {
 
         let mut points_idx = acc.npoints() as usize;
 
-        for j in (lidx + 1)..ridx {
-            let npoints = leaves[j].npoints() as usize;
+        for leaf in leaves.iter().take(ridx).skip(lidx + 1) {
+            let npoints = leaf.npoints() as usize;
 
             for k in 0..npoints {
                 if (points_idx + k) >= MAX_POINTS {
@@ -120,7 +120,7 @@ pub fn unique_leaves(mut leaves: Leaves, sorted: bool) -> Leaves {
                     )
                 }
 
-                acc.points.0[points_idx + k] = leaves[j].points.0[k];
+                acc.points.0[points_idx + k] = leaf.points.0[k];
             }
 
             points_idx += npoints;
@@ -132,10 +132,10 @@ pub fn unique_leaves(mut leaves: Leaves, sorted: bool) -> Leaves {
 
 /// Find coarsest **Seeds** at each processor. These are used to seed the construction of a minimal
 /// block octree in Algorithm 4 of [1].
-pub fn find_seeds(local_leaves: &Leaves, depth: &u64) -> Keys {
+pub fn find_seeds(local_leaves: &[Leaf], depth: &u64) -> Keys {
     // Find least and greatest leaves on processor
-    let min: Key = local_leaves.iter().min().unwrap().key.clone();
-    let max: Key = local_leaves.iter().max().unwrap().key.clone();
+    let min: Key = local_leaves.iter().min().unwrap().key;
+    let max: Key = local_leaves.iter().max().unwrap().key;
 
     // Complete region between least and greatest leaves
     let complete = complete_region(&min, &max, depth);
@@ -143,7 +143,7 @@ pub fn find_seeds(local_leaves: &Leaves, depth: &u64) -> Keys {
     // Find blocks
     let levels: Vec<u64> = complete.iter().map(|k| k.3).collect();
 
-    let mut coarsest_level = depth.clone();
+    let mut coarsest_level = *depth;
 
     for l in levels {
         if l < coarsest_level {
@@ -167,17 +167,18 @@ pub fn find_seeds(local_leaves: &Leaves, depth: &u64) -> Keys {
 /// smaller than the minimum **Seed** on  a given processor must be handed to its partner from
 /// algorithm 4 of [1].
 pub fn transfer_leaves_to_coarse_blocktree(
-    local_leaves: &Leaves,
-    seeds: &Keys,
+    local_leaves: &[Leaf],
+    seeds: &[Key],
     rank: Rank,
     world: SystemCommunicator,
     size: Rank,
 ) -> Leaves {
+    #![allow(unused_variables)]
     let mut min_seed = Key::default();
     if rank == 0 {
-        min_seed = local_leaves.iter().min().unwrap().key.clone();
+        min_seed = local_leaves.iter().min().unwrap().key;
     } else {
-        min_seed = seeds.iter().min().unwrap().clone();
+        min_seed = *seeds.iter().min().unwrap();
     }
 
     let mut received: Leaves = Vec::new();
@@ -187,7 +188,7 @@ pub fn transfer_leaves_to_coarse_blocktree(
     if rank > 0 {
         let msg: Leaves = local_leaves
             .iter()
-            .filter(|&l| &l.key < &min_seed)
+            .filter(|&l| l.key < min_seed)
             .cloned()
             .collect();
 
@@ -201,7 +202,7 @@ pub fn transfer_leaves_to_coarse_blocktree(
 
     let mut local_leaves: Leaves = local_leaves
         .iter()
-        .filter(|&l| &l.key >= &min_seed)
+        .filter(|&l| l.key >= min_seed)
         .cloned()
         .collect();
 
@@ -238,10 +239,10 @@ pub fn complete_blocktree(
 ) -> Keys {
     if rank == 0 {
         let root = Key(0, 0, 0, 0);
-        let dfd_root = find_deepest_first_descendent(&root, &depth);
+        let dfd_root = find_deepest_first_descendent(&root, depth);
         let min = seeds.iter().min().unwrap();
-        let na = find_finest_common_ancestor(&dfd_root, min, &depth);
-        let mut first_child = na.clone();
+        let na = find_finest_common_ancestor(&dfd_root, min, depth);
+        let mut first_child = na;
         first_child.3 += 1;
         seeds.push(first_child);
         seeds.sort();
@@ -249,17 +250,17 @@ pub fn complete_blocktree(
 
     if rank == (size - 1) {
         let root = Key(0, 0, 0, 0);
-        let dld_root = find_deepest_last_descendent(&root, &depth);
+        let dld_root = find_deepest_last_descendent(&root, depth);
         let max = seeds.iter().max().unwrap();
-        let na = find_finest_common_ancestor(&dld_root, max, &depth);
-        let children = find_children(&na, &depth);
-        let last_child = children.iter().max().unwrap().clone();
+        let na = find_finest_common_ancestor(&dld_root, max, depth);
+        let children = find_children(&na, depth);
+        let last_child = *children.iter().max().unwrap();
         seeds.push(last_child);
     }
 
     // Send required data to partner process.
     if rank > 0 {
-        let min = seeds.iter().min().unwrap().clone();
+        let min = *seeds.iter().min().unwrap();
         world.process_at_rank(rank - 1).send(&min);
     }
 
@@ -275,13 +276,13 @@ pub fn complete_blocktree(
         let a = seeds[i];
         let b = seeds[i + 1];
 
-        let mut tmp = complete_region(&a, &b, &depth);
+        let mut tmp = complete_region(&a, &b, depth);
         local_blocktree.push(a);
         local_blocktree.append(&mut tmp);
     }
 
     if rank == (size - 1) {
-        local_blocktree.push(seeds.last().unwrap().clone());
+        local_blocktree.push(*seeds.last().unwrap());
     }
 
     local_blocktree.sort();
@@ -289,14 +290,14 @@ pub fn complete_blocktree(
 }
 
 /// Associate a given set of **Blocks** with a given set of **Leaves**.
-pub fn assign_blocks_to_leaves(local_leaves: &mut Leaves, local_blocktree: &Keys, depth: &u64) {
+pub fn assign_blocks_to_leaves(local_leaves: &mut Leaves, local_blocktree: &[Key], depth: &u64) {
     let local_blocktree_set: HashSet<Key> = local_blocktree.iter().cloned().collect();
 
     for leaf in local_leaves.iter_mut() {
         let ancestors = find_ancestors(&leaf.key, depth);
         for ancestor in ancestors {
             if local_blocktree_set.contains(&ancestor) {
-                leaf.block = ancestor.clone();
+                leaf.block = ancestor;
                 break;
             }
         }
@@ -304,7 +305,7 @@ pub fn assign_blocks_to_leaves(local_leaves: &mut Leaves, local_blocktree: &Keys
 }
 
 /// Find the **Weights** of a given set of **Blocks**.
-pub fn find_block_weights(leaves: &Leaves, blocktree: &Keys) -> Weights {
+pub fn find_block_weights(leaves: &[Leaf], blocktree: &[Key]) -> Weights {
     let mut weights: Weights = Vec::new();
 
     for &block in blocktree.iter() {
@@ -316,7 +317,7 @@ pub fn find_block_weights(leaves: &Leaves, blocktree: &Keys) -> Weights {
 
 /// Transfer **Leaves** to correspond to the final load balanced blocktree.
 pub fn transfer_leaves_to_final_blocktree(
-    sent_blocks: &Keys,
+    sent_blocks: &[Key],
     mut local_leaves: Leaves,
     size: Rank,
     rank: Rank,
@@ -373,8 +374,12 @@ pub fn block_partition(
     let local_nblocks = local_blocktree.len();
     let mut cumulative_weight = 0;
     let mut cumulative_nblocks = 0;
+
+    #[allow(unused_variables)]
     let mut total_weight = 0;
+    #[allow(unused_variables)]
     let mut total_nblocks = 0;
+
     world.scan_into(
         &local_weight,
         &mut cumulative_weight,
@@ -391,8 +396,8 @@ pub fn block_partition(
     let last_process = world.process_at_rank(last_rank);
 
     if rank == last_rank {
-        total_weight = cumulative_weight.clone();
-        total_nblocks = cumulative_nblocks.clone();
+        total_weight = cumulative_weight;
+        total_nblocks = cumulative_nblocks;
     } else {
         total_weight = 0;
         total_nblocks = 0;
@@ -469,15 +474,15 @@ pub fn block_partition(
 
 /// Perform parallelised sample sort on a distributed set of **Leaves**.
 pub fn sample_sort(
-    local_leaves: &Leaves,
-    nprocs: u16,
+    local_leaves: &[Leaf],
+    size: Rank,
     rank: Rank,
     world: SystemCommunicator,
 ) -> Leaves {
     // Buffer for receiving partner keys
     let mut received_leaves: Leaves = Vec::new();
 
-    let mut received_samples = vec![Leaf::default(); K * (nprocs as usize)];
+    let mut received_samples = vec![Leaf::default(); K * (size as usize)];
     let nleaves = local_leaves.len();
 
     // 1. Collect 'K' samples from each process onto all other processes
@@ -501,10 +506,10 @@ pub fn sample_sort(
     let nsplitters = splitters.len();
 
     // 2. Sort local leaves into buckets
-    let mut buckets: Vec<Leaves> = vec![Vec::new(); nprocs as usize];
+    let mut buckets: Vec<Leaves> = vec![Vec::new(); size as usize];
 
     for leaf in local_leaves.iter() {
-        for i in 0..(nprocs as usize) {
+        for i in 0..(size as usize) {
             if i < nsplitters {
                 let s = &splitters[i];
                 if leaf < s {
@@ -518,10 +523,10 @@ pub fn sample_sort(
     }
 
     // 3. Send all local buckets to their matching processor.
-    for i in 0..(nprocs as i32) {
-        if rank != i {
-            let msg = &buckets[i as usize];
-            world.process_at_rank(i).send(&msg[..]);
+    for r in 0..size {
+        if rank != r {
+            let msg = &buckets[r as usize];
+            world.process_at_rank(r).send(&msg[..]);
         } else {
             for _ in 1..world.size() {
                 let (mut msg, _) = world.any_process().receive_vec::<Leaf>();

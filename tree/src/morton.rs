@@ -363,7 +363,7 @@ pub fn find_parent(key: &Key, depth: &u64) -> Key {
 pub fn find_siblings(key: &Key, depth: &u64) -> Keys {
     let parent = find_parent(key, depth);
 
-    let mut first_child = parent.clone();
+    let mut first_child = parent;
     first_child.3 += 1;
 
     let mut siblings: Keys = Vec::new();
@@ -388,7 +388,7 @@ pub fn find_siblings(key: &Key, depth: &u64) -> Keys {
 
 /// Find the children of a **Morton Key**.
 pub fn find_children(key: &Key, depth: &u64) -> Keys {
-    let mut first_child = key.clone();
+    let mut first_child = *key;
     first_child.3 += 1;
     find_siblings(&first_child, depth)
 }
@@ -407,13 +407,11 @@ pub fn encode_point(&point: &Point, &level: &u64, &depth: &u64, &x0: &Point, &r0
 
 /// Encode a vector of **Points** with their corresponding Morton keys at a given discretisation
 /// in parallel.
-pub fn encode_points(points: &PointsVec, level: &u64, depth: &u64, x0: &Point, r0: &f64) -> Keys {
-    let keys = points
+pub fn encode_points(points: &[Point], level: &u64, depth: &u64, x0: &Point, r0: &f64) -> Keys {
+    points
         .par_iter()
-        .map(|p| encode_point(&p, level, depth, x0, r0))
-        .collect();
-
-    return keys;
+        .map(|p| encode_point(p, level, depth, x0, r0))
+        .collect()
 }
 
 /// Find all ancestors of a **Morton Key**.
@@ -435,16 +433,15 @@ pub fn find_finest_common_ancestor(a: &Key, b: &Key, depth: &u64) -> Key {
     let ancestors_b: HashSet<Key> = find_ancestors(b, depth).into_iter().collect();
 
     let intersection: HashSet<Key> = ancestors_a.intersection(&ancestors_b).copied().collect();
-    let intersection: Vec<Key> = intersection.into_iter().collect();
     intersection.into_iter().max().unwrap()
 }
 
 /// The deepest first descendent of a **Morton Key**. First descendants always share anchors.
 pub fn find_deepest_first_descendent(key: &Key, depth: &u64) -> Key {
     if key.3 < *depth {
-        Key(key.0, key.1, key.2, depth.clone())
+        Key(key.0, key.1, key.2, *depth)
     } else {
-        key.clone()
+        *key
     }
 }
 
@@ -453,23 +450,23 @@ pub fn find_deepest_first_descendent(key: &Key, depth: &u64) -> Key {
 pub fn find_deepest_last_descendent(key: &Key, depth: &u64) -> Key {
     if key.3 < *depth {
         let mut level_diff = depth - key.3;
-        let mut dld = find_children(key, depth).iter().max().unwrap().clone();
+        let mut dld = *find_children(key, depth).iter().max().unwrap();
 
         while level_diff > 1 {
-            let tmp = dld.clone();
-            dld = find_children(&tmp, depth).iter().max().unwrap().clone();
+            let tmp = dld;
+            dld = *find_children(&tmp, depth).iter().max().unwrap();
             level_diff -= 1;
         }
 
         dld
     } else {
-        key.clone()
+        *key
     }
 }
 
 /// Find all descendants of a **Morton Key** at the deepest level.
 pub fn find_descendants(key: &Key, depth: &u64) -> Keys {
-    let mut descendants: Keys = vec![key.clone()];
+    let mut descendants: Keys = vec![*key];
     let mut level_diff = depth - key.3;
 
     while level_diff > 0 {
@@ -519,9 +516,9 @@ pub fn keys_to_leaves(mut keys: Keys, points: PointsVec, sorted: bool) -> Leaves
         let lidx = key_indices[i];
         let ridx = key_indices[i + 1];
 
-        for j in lidx..ridx {
+        for (j, p2k) in points_to_keys.iter().enumerate().take(ridx).skip(lidx) {
             let k = ridx - 1 - j;
-            points.0[k] = points_to_keys[j].0.clone();
+            points.0[k] = *p2k.0
         }
 
         let leaf = Leaf {
