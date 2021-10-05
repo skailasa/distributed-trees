@@ -171,7 +171,7 @@ pub fn transfer_leaves_to_coarse_blocktree(
     seeds: &Keys,
     rank: Rank,
     world: SystemCommunicator,
-    nprocs: i32,
+    size: Rank,
 ) -> Leaves {
     let mut min_seed = Key::default();
     if rank == 0 {
@@ -194,7 +194,7 @@ pub fn transfer_leaves_to_coarse_blocktree(
         world.process_at_rank(prev_rank).send(&msg[..]);
     }
 
-    if rank < (nprocs as i32 - 1) {
+    if rank < (size - 1) {
         let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
         received.append(&mut rec);
     }
@@ -232,8 +232,8 @@ pub fn linearise(keys: &mut Keys, depth: &u64, sorted: bool) -> Keys {
 pub fn complete_blocktree(
     seeds: &mut Keys,
     depth: &u64,
-    rank: i32,
-    nprocs: u16,
+    rank: Rank,
+    size: Rank,
     world: SystemCommunicator,
 ) -> Keys {
     if rank == 0 {
@@ -247,7 +247,7 @@ pub fn complete_blocktree(
         seeds.sort();
     }
 
-    if rank == (nprocs - 1).into() {
+    if rank == (size - 1) {
         let root = Key(0, 0, 0, 0);
         let dld_root = find_deepest_last_descendent(&root, &depth);
         let max = seeds.iter().max().unwrap();
@@ -263,7 +263,7 @@ pub fn complete_blocktree(
         world.process_at_rank(rank - 1).send(&min);
     }
 
-    if rank < (nprocs - 1).into() {
+    if rank < (size - 1) {
         let rec = world.any_process().receive::<Key>();
         seeds.push(rec.0);
     }
@@ -280,7 +280,7 @@ pub fn complete_blocktree(
         local_blocktree.append(&mut tmp);
     }
 
-    if rank == (nprocs - 1).into() {
+    if rank == (size - 1) {
         local_blocktree.push(seeds.last().unwrap().clone());
     }
 
@@ -318,12 +318,14 @@ pub fn find_block_weights(leaves: &Leaves, blocktree: &Keys) -> Weights {
 pub fn transfer_leaves_to_final_blocktree(
     sent_blocks: &Keys,
     mut local_leaves: Leaves,
-    nprocs: u16,
+    size: Rank,
     rank: Rank,
     world: SystemCommunicator,
 ) -> Leaves {
     let mut received: Leaves = Vec::new();
     let mut msg: Leaves = Vec::new();
+
+    let next_rank = if rank + 1 < size { rank + 1 } else { 0 };
 
     for &block in sent_blocks.iter() {
         let mut to_send: Leaves = local_leaves
@@ -343,23 +345,13 @@ pub fn transfer_leaves_to_final_blocktree(
             .collect();
     }
 
-    for i in 0..((nprocs) as i32) {
-        if i + 1 < ((nprocs) as i32) {
-            if rank == (i + 1) {
-                world.process_at_rank(i).send_with_tag(&msg[..], rank);
-            }
-            if rank == i {
-                let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
-                received.append(&mut rec);
-            }
-        } else {
-            if rank == 0 {
-                world.process_at_rank(i).send_with_tag(&msg[..], rank);
-            }
-            if rank == i {
-                let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
-                received.append(&mut rec);
-            }
+    for r in 0..size {
+        if next_rank == r {
+            world.process_at_rank(r).send_with_tag(&msg[..], rank);
+        }
+        if rank == r {
+            let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
+            received.append(&mut rec);
         }
     }
 
@@ -373,9 +365,8 @@ pub fn transfer_leaves_to_final_blocktree(
 pub fn block_partition(
     weights: Weights,
     local_blocktree: &mut Keys,
-    nprocs: u16,
-    rank: i32,
-    size: i32,
+    rank: Rank,
+    size: Rank,
     world: SystemCommunicator,
 ) -> Keys {
     let local_weight = weights.iter().fold(0, |acc, x| acc + x.0);
@@ -396,7 +387,7 @@ pub fn block_partition(
     );
 
     // Broadcast total weight from last process
-    let last_rank: Rank = (nprocs - 1) as Rank;
+    let last_rank = size - 1;
     let last_process = world.process_at_rank(last_rank);
 
     if rank == last_rank {
@@ -411,8 +402,8 @@ pub fn block_partition(
     last_process.broadcast_into(&mut total_nblocks);
 
     // Maximum weight per process
-    let w: u64 = (total_weight as f64 / nprocs as f64).ceil() as u64;
-    let k: u64 = total_weight % (nprocs as u64);
+    let w: u64 = (total_weight as f64 / size as f64).ceil() as u64;
+    let k: u64 = total_weight % (size as u64);
 
     let mut local_cumulative_weights = weights.clone();
     let mut sum = 0;
@@ -448,24 +439,22 @@ pub fn block_partition(
     }
 
     // Send receive qs with partner process
-    let next_process = world.process_at_rank(next_rank);
     let previous_process = world.process_at_rank(previous_rank);
 
-    let mut received_blocks: Keys = vec![Key::default(); total_nblocks];
+    let mut received_blocks: Keys = Vec::new();
 
-    p2p::send_receive_into(
-        &q[..],
-        &previous_process,
-        &mut received_blocks[..],
-        &next_process,
-    );
+    for r in 0..size {
+        if r == rank {
+            previous_process.send(&q[..]);
+        }
+        if r == next_rank {
+            let (mut rec, _) = world.any_process().receive_vec::<Key>();
 
-    received_blocks = received_blocks
-        .iter()
-        .filter(|&&b| b != Key::default())
-        .cloned()
-        .collect();
+            received_blocks.append(&mut rec)
+        }
+    }
 
+    // Remove sent blocks locally, and append received blocks
     for sent in &q {
         local_blocktree
             .iter()

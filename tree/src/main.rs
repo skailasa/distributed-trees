@@ -11,8 +11,6 @@ use tree::tree::{
     unique_leaves,
 };
 
-// use tree::sort::sample_sort;
-
 fn main() {
     // 0.i Experimental Parameters
     let nprocs: u16 = std::env::var("NPROCS").unwrap().parse().unwrap_or(2);
@@ -32,14 +30,7 @@ fn main() {
     let x0 = Point(0.5, 0.5, 0.5);
     let r0 = 0.5;
     let keys = encode_points(&points, &depth, &depth, &x0, &r0);
-    let mut local_leaves = keys_to_leaves(keys, points, true);
-
-    // Filter local leaves
-    local_leaves = local_leaves
-        .iter()
-        .filter(|&k| k.key != Key::default())
-        .cloned()
-        .collect();
+    let local_leaves = keys_to_leaves(keys, points, true);
 
     // 2. Perform parallel Morton sort over leaves
     let local_leaves = sample_sort(&local_leaves, nprocs, rank, world);
@@ -55,10 +46,10 @@ fn main() {
     local_leaves.sort();
 
     let mut local_leaves =
-        transfer_leaves_to_coarse_blocktree(&local_leaves, &seeds, rank, world, nprocs as i32);
+        transfer_leaves_to_coarse_blocktree(&local_leaves, &seeds, rank, world, size);
 
     // 5. Complete minimal block-tree across processes
-    let mut local_blocktree = complete_blocktree(&mut seeds, &depth, rank, nprocs, world);
+    let mut local_blocktree = complete_blocktree(&mut seeds, &depth, rank, size, world);
 
     // Associate leaves with blocks
     assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, &depth);
@@ -66,13 +57,19 @@ fn main() {
     let weights = find_block_weights(&local_leaves, &local_blocktree);
 
     // 6.i Re-balance blocks based on load, find out which blocks were sent to partner.
-    let sent_blocks = block_partition(weights, &mut local_blocktree, nprocs, rank, size, world);
+    let sent_blocks = block_partition(weights, &mut local_blocktree, rank, size, world);
 
     // 6.ii For each sent block, send corresponding leaves to partner process.
     let local_leaves =
-        transfer_leaves_to_final_blocktree(&sent_blocks, local_leaves, nprocs, rank, world);
+        transfer_leaves_to_final_blocktree(&sent_blocks, local_leaves, size, rank, world);
 
-    println!("RANK {} final {}", rank, local_leaves.len());
+    // println!("RANK {} final {}", rank, local_leaves.len());
+
+    println!("blocks_{}=np.array([", rank);
+    for block in local_blocktree {
+        println!("    [{}, {}, {}, {}],", block.0, block.1, block.2, block.3);
+    }
+    println!("])");
 
     // 7. Split blocks into adaptive tree, and pass into Octree structure.
 
@@ -82,5 +79,5 @@ fn main() {
 
     // Print runtime to stdout
     world.barrier();
-    println!("RANK {} RUNTIME: {:?}", rank, start.elapsed().as_secs());
+    // println!("RANK {} RUNTIME: {:?}", rank, start.elapsed().as_secs());
 }
