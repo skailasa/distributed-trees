@@ -462,7 +462,6 @@ pub fn find_deepest_last_descendent(key: &Key, depth: &u64) -> Key {
         }
 
         dld
-
     } else {
         key.clone()
     }

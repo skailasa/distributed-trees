@@ -1,4 +1,3 @@
-
 use std::collections::HashSet;
 
 use memoffset::offset_of;
@@ -13,8 +12,8 @@ use mpi::{
 use rand::{thread_rng, Rng};
 
 use crate::morton::{
-    MAX_POINTS, Key, Keys, Leaf, Leaves, find_ancestors, find_children,
-    find_deepest_first_descendent, find_deepest_last_descendent, find_finest_common_ancestor,
+    find_ancestors, find_children, find_deepest_first_descendent, find_deepest_last_descendent,
+    find_finest_common_ancestor, Key, Keys, Leaf, Leaves, MAX_POINTS,
 };
 
 /// Sample density for oversampled parallel Sample Sort implementation.
@@ -213,7 +212,6 @@ pub fn transfer_leaves_to_coarse_blocktree(
 
 /// Remove overlaps from a list of octants, algorithm 7 in [1].
 pub fn linearise(keys: &mut Keys, depth: &u64, sorted: bool) -> Keys {
-
     if !sorted {
         keys.sort();
     }
@@ -549,7 +547,6 @@ pub fn sample_sort(
     received_leaves.sort();
     received_leaves
 }
-
 
 mod tests {
     use super::*;

@@ -1,4 +1,4 @@
-use std::time::{Instant};
+use std::time::Instant;
 
 use mpi::traits::*;
 
@@ -7,7 +7,8 @@ use tree::morton::{encode_points, keys_to_leaves, Key, Point};
 
 use tree::tree::{
     assign_blocks_to_leaves, block_partition, complete_blocktree, find_block_weights, find_seeds,
-    transfer_leaves_to_coarse_blocktree, transfer_leaves_to_final_blocktree, unique_leaves, sample_sort
+    sample_sort, transfer_leaves_to_coarse_blocktree, transfer_leaves_to_final_blocktree,
+    unique_leaves,
 };
 
 // use tree::sort::sample_sort;
