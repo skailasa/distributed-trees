@@ -1,6 +1,5 @@
-use std::time::{Instant, SystemTime};
+use std::time::{Instant};
 
-use mpi::point_to_point as p2p;
 use mpi::traits::*;
 
 use tree::data::random;
@@ -32,7 +31,7 @@ fn main() {
     let x0 = Point(0.5, 0.5, 0.5);
     let r0 = 0.5;
     let keys = encode_points(&points, &depth, &depth, &x0, &r0);
-    let mut local_leaves = keys_to_leaves(keys, points);
+    let mut local_leaves = keys_to_leaves(keys, points, true);
 
     // Filter local leaves
     local_leaves = local_leaves
@@ -62,26 +61,6 @@ fn main() {
 
     // Associate leaves with blocks
     assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, &depth);
-
-    // println!("blocks_{}=np.array([", rank);
-    // for block in local_blocktree {
-    //     println!("[{}, {}, {}, {}],", block.0, block.1, block.2, block.3);
-    // }
-    // println!("])");
-
-    // let mut found = Vec::new();
-
-    // for leaf in local_leaves {
-    //     if !found.contains(&leaf.block) {
-    //         found.push(leaf.block);
-    //     }
-    // }
-
-    // println!("found_{}=np.array([", rank);
-    // for block in found {
-    //     println!("[{}, {}, {}, {}],", block.0, block.1, block.2, block.3);
-    // }
-    // println!("])");
 
     let weights = find_block_weights(&local_leaves, &local_blocktree);
 

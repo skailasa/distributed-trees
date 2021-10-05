@@ -3,35 +3,34 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 use memoffset::offset_of;
-
 use mpi::{
     datatype::{Equivalence, UncommittedUserDatatype, UserDatatype},
     Address,
 };
-
 use rayon::prelude::*;
 
 pub const MAX_POINTS: usize = 150;
 pub const SENTINEL: KeyType = 999;
 
 type PointType = f64;
-/// Cartesian physical coordinates (x, y, z) of a given point.
 #[derive(Clone, Copy, Debug)]
+/// **Point**, Cartesian coordinates (x, y, z).
 pub struct Point(pub PointType, pub PointType, pub PointType);
 pub type PointsVec = Vec<Point>;
 
 #[derive(Clone, Copy, Debug)]
+/// **Points Array**, fixed size of MAX_POINTS=150. Used for describing points contained in a given
+/// Leaf.
 pub struct PointsArray(pub [Point; MAX_POINTS]);
 
 type KeyType = u64;
-/// 20 bits each for (x, y, z) indices from anchor representation of Morton key,
-/// 4 bits for level data.
 #[derive(Clone, Copy, Debug)]
+/// **Morton Key**, anchor and level represented as (x, y, z, level).
 pub struct Key(pub KeyType, pub KeyType, pub KeyType, pub KeyType);
 pub type Keys = Vec<Key>;
 
-/// Leaf keys additionally bundle particle coordinate data.
 #[derive(Clone, Debug)]
+/// **Leaf Key**, bundles **Morton Key**, associated **Block** and particle **Points** it contains.
 pub struct Leaf {
     pub key: Key,
     pub block: Key,
@@ -39,7 +38,6 @@ pub struct Leaf {
 }
 pub type Leaves = Vec<Leaf>;
 
-/// Default implementations
 impl Default for Key {
     fn default() -> Self {
         Key(SENTINEL, SENTINEL, SENTINEL, 0)
@@ -71,31 +69,32 @@ impl Default for Leaf {
 }
 
 impl Leaf {
+    /// Function to calculate the number of points contained in a **Leaf**.
     pub fn npoints(&self) -> u64 {
-        let npoints = self
+        let npoints: u64 = self
             .points
             .0
             .iter()
             .filter(|&&n| !n.0.is_nan() & !n.1.is_nan() & !n.2.is_nan())
-            .count();
-        npoints as u64
+            .count() as u64;
+        npoints
     }
 }
 
-/// Test Morton keys for equality.
+/// Test **Morton Keys** for equality. Keys are considered equal if their anchors and levels match.
 fn equal(a: &Key, b: &Key) -> bool {
     (a.0 == b.0) & (a.1 == b.1) & (a.2 == b.2) & (a.3 == b.3)
 }
 
-/// Subroutine in less than function, equivalent to comparing floor of log_2(x).
-/// Adapted from T.Chan Chan, T. "Closest-point problems simplified on the RAM",
-/// ACM-SIAM Symposium on Discrete Algorithms (2002).
+/// Subroutine in less than function, equivalent to comparing floor of log_2(x). Adapted from
+/// Chan, T. "Closest-point problems simplified on the RAM", ACM-SIAM Symposium on Discrete
+/// Algorithms (2002).
 fn most_significant_bit(x: u64, y: u64) -> bool {
     (x < y) & (x < (x ^ y))
 }
 
-/// Implementation of Algorithm 12 in Sundar et. al. as a subroutine for the
-/// Ord trait. If a is less than b, this returns true.
+/// Implementation of Algorithm 12 in Sundar et. al. to compare the ordering of two **Morton Keys**
+/// If key `a` is less than key `b`, this function evaluates to true.
 fn less_than(a: &Key, b: &Key) -> Option<bool> {
     // If anchors match, the one at the coarser level has the lesser Morton id.
     let same_anchor = (a.0 == b.0) & (a.1 == b.1) & (a.2 == b.2);
@@ -176,7 +175,6 @@ impl PartialEq for Key {
 
 impl Eq for Key {}
 
-/// A unique hash for a Morton key is simply it's four components.
 impl Hash for Key {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash(state);
@@ -215,7 +213,6 @@ impl PartialEq for Leaf {
 
 impl Eq for Leaf {}
 
-/// A unique hash for a Morton key is simply it's four components.
 impl Hash for Leaf {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.key.0.hash(state);
@@ -233,7 +230,6 @@ impl PartialEq for Point {
 
 impl Eq for Point {}
 
-/// Implement MPI equivalent datatype for Morton keys
 unsafe impl Equivalence for Key {
     type Out = UserDatatype;
     fn equivalent_datatype() -> Self::Out {
@@ -255,7 +251,6 @@ unsafe impl Equivalence for Key {
     }
 }
 
-/// Implement MPI equivalent datatype for Leaf keys
 unsafe impl Equivalence for Leaf {
     type Out = UserDatatype;
     fn equivalent_datatype() -> Self::Out {
@@ -318,19 +313,17 @@ unsafe impl Equivalence for Leaf {
     }
 }
 
-/// Subroutine for finding the parent of a Morton key in its component
-/// representation.
-///
-/// The trick is to figure out whether the anchor of a key
-/// survives at its parent level, and notice that anchors at odd indices
-/// don't survive. `parent_level_diff' refers to the difference between
-/// the parent's key's level, and the maximum depth of the tree.
+/// Subroutine for finding the parent of a Morton key in its component representation. The trick
+/// is to figure out whether the anchor of a key survives at its parent level, and notice that
+/// anchors at odd indices don't survive. `parent_level_diff' refers to the difference between the
+/// parent's key's level, and the maximum depth of the tree.
 fn odd_index(idx: u64, parent_level_diff: u64) -> bool {
     let factor = 1 << parent_level_diff;
     (idx % factor) != 0
 }
 
-/// Find the parent of a Morton key.
+/// Find the parent of a **Morton Key**. Parents contain the key, and are at the previous level of
+/// discretisation.
 pub fn find_parent(key: &Key, depth: &u64) -> Key {
     // Return root if root fed in
     if (key.0 == 0) & (key.1 == 0) & (key.2 == 0) {
@@ -362,8 +355,7 @@ pub fn find_parent(key: &Key, depth: &u64) -> Key {
     }
 }
 
-/// Find the siblings of a Morton key. Siblings share
-/// the same parent.
+/// Find the siblings of a **Morton Key**. Siblings share the same parent.
 pub fn find_siblings(key: &Key, depth: &u64) -> Keys {
     let parent = find_parent(key, depth);
 
@@ -390,14 +382,14 @@ pub fn find_siblings(key: &Key, depth: &u64) -> Keys {
     siblings
 }
 
-/// Find the children of a Morton key.
+/// Find the children of a **Morton Key**.
 pub fn find_children(key: &Key, depth: &u64) -> Keys {
     let mut first_child = key.clone();
     first_child.3 += 1;
     find_siblings(&first_child, depth)
 }
 
-/// Encode a Cartesian coordinate in a Morton key.
+/// Encode a **Point** in a **Morton Key**.
 pub fn encode_point(&point: &Point, &level: &u64, &depth: &u64, &x0: &Point, &r0: &f64) -> Key {
     let mut key = Key(0, 0, 0, level);
     let displacement = Point(x0.0 - r0, x0.1 - r0, x0.2 - r0);
@@ -409,8 +401,8 @@ pub fn encode_point(&point: &Point, &level: &u64, &depth: &u64, &x0: &Point, &r0
     key
 }
 
-/// Encode a vector of physical point coordinates into their corresponding
-/// Morton keys, in parallel.
+/// Encode a vector of **Points** with their corresponding Morton keys at a given discretisation
+/// in parallel.
 pub fn encode_points(points: &PointsVec, level: &u64, depth: &u64, x0: &Point, r0: &f64) -> Keys {
     let keys = points
         .par_iter()
@@ -420,7 +412,7 @@ pub fn encode_points(points: &PointsVec, level: &u64, depth: &u64, x0: &Point, r
     return keys;
 }
 
-/// Find ancestors of a Morton key.
+/// Find all ancestors of a **Morton Key**.
 pub fn find_ancestors(key: &Key, depth: &u64) -> Keys {
     let root = Key(0, 0, 0, 0);
     let mut parent = find_parent(key, depth);
@@ -433,20 +425,17 @@ pub fn find_ancestors(key: &Key, depth: &u64) -> Keys {
     ancestors
 }
 
-/// Find the finest common ancestor of two Morton keys.
+/// Find the finest common ancestor of two **Morton Keys**.
 pub fn find_finest_common_ancestor(a: &Key, b: &Key, depth: &u64) -> Key {
     let ancestors_a: HashSet<Key> = find_ancestors(a, depth).into_iter().collect();
     let ancestors_b: HashSet<Key> = find_ancestors(b, depth).into_iter().collect();
 
     let intersection: HashSet<Key> = ancestors_a.intersection(&ancestors_b).copied().collect();
-
     let intersection: Vec<Key> = intersection.into_iter().collect();
-
     intersection.into_iter().max().unwrap()
 }
 
-/// The deepest first descendent of a Morton key.
-/// First descendents always share anchors.
+/// The deepest first descendent of a **Morton Key**. First descendants always share anchors.
 pub fn find_deepest_first_descendent(key: &Key, depth: &u64) -> Key {
     if key.3 < *depth {
         Key(key.0, key.1, key.2, depth.clone())
@@ -455,8 +444,7 @@ pub fn find_deepest_first_descendent(key: &Key, depth: &u64) -> Key {
     }
 }
 
-/// The deepest last descendent of a Morton key.
-/// At the deepest level, Keys are considered to have
+/// The deepest last descendent of a **Morton Key**. At the deepest level nodes are considered to
 /// have side lengths of 1.
 pub fn find_deepest_last_descendent(key: &Key, depth: &u64) -> Key {
     if key.3 < *depth {
@@ -470,33 +458,38 @@ pub fn find_deepest_last_descendent(key: &Key, depth: &u64) -> Key {
         }
 
         dld
+
     } else {
         key.clone()
     }
 }
 
-pub fn find_descendants(key: &Key, level: &u64, depth: &u64) -> Keys {
-    let mut descendents: Keys = vec![key.clone()];
-    let mut level_diff = depth - level;
+/// Find all descendants of a **Morton Key** at the deepest level.
+pub fn find_descendants(key: &Key, depth: &u64) -> Keys {
+    let mut descendants: Keys = vec![key.clone()];
+    let mut level_diff = depth - key.3;
 
     while level_diff > 0 {
         let mut aux: Keys = Vec::new();
 
-        for d in descendents {
+        for d in descendants {
             let mut children = find_children(&d, depth);
             aux.append(&mut children);
         }
 
-        descendents = aux;
+        descendants = aux;
         level_diff -= 1;
     }
-    descendents
+    descendants
 }
 
-/// Convert keys corresponding to a point set, to leaves.
-pub fn keys_to_leaves(mut keys: Keys, points: PointsVec) -> Leaves {
+/// Convert **Morton Keys** corresponding by their indices to a vector of **Points**, to a vector
+/// of unique **Leaves**, containing the **Point** data.
+pub fn keys_to_leaves(mut keys: Keys, points: PointsVec, sorted: bool) -> Leaves {
     // Only works if keys are sorted.
-    keys.sort();
+    if !sorted {
+        keys.sort();
+    }
 
     let mut points_to_keys: Vec<_> = points.iter().zip(keys.iter()).collect();
     points_to_keys.sort_by(|a, b| a.1.cmp(b.1));
@@ -519,7 +512,6 @@ pub fn keys_to_leaves(mut keys: Keys, points: PointsVec) -> Leaves {
 
     // Fill up buffer of leaf keys
     for (i, key) in unique_keys.iter().enumerate() {
-        // local_leaves[i] = k.clone();
         let mut points = PointsArray([Point::default(); MAX_POINTS]);
         let lidx = key_indices[i];
         let ridx = key_indices[i + 1];
@@ -708,7 +700,7 @@ mod tests {
         let r0 = 0.5;
         let keys = encode_points(&points, &level, &depth, &x0, &r0);
         let unique_keys: Keys = keys.iter().unique().cloned().collect();
-        let leaves = keys_to_leaves(keys, points);
+        let leaves = keys_to_leaves(keys, points, true);
 
         // Test that no keys are dropped
         assert_eq!(unique_keys.len(), leaves.len());
