@@ -41,7 +41,6 @@ unsafe impl Equivalence for Weight {
 /// Adapted from algorithm 3 in [1]. Construct a minimal octree between two octants.
 pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
     let ancestors_a: HashSet<Key> = find_ancestors(a, depth).into_iter().collect();
-
     let ancestors_b: HashSet<Key> = find_ancestors(b, depth).into_iter().collect();
     let na = find_finest_common_ancestor(a, b, depth);
 
@@ -327,6 +326,8 @@ pub fn transfer_leaves_to_final_blocktree(
     let mut msg: Leaves = Vec::new();
 
     let next_rank = if rank + 1 < size { rank + 1 } else { 0 };
+    let prev_rank = if rank > 0 { rank - 1 } else { size - 1 };
+    let previous_process = world.process_at_rank(prev_rank);
 
     for &block in sent_blocks.iter() {
         let mut to_send: Leaves = local_leaves
@@ -339,20 +340,18 @@ pub fn transfer_leaves_to_final_blocktree(
 
     // Remove these leaves from the local leaves
     for &block in sent_blocks.iter() {
-        local_leaves = local_leaves
-            .iter()
-            .filter(|&l| l.block != block)
-            .cloned()
-            .collect();
+        local_leaves
+            .retain(|l| l.block != block)
     }
 
     for r in 0..size {
-        if next_rank == r {
-            world.process_at_rank(r).send_with_tag(&msg[..], rank);
+        if r == rank {
+            previous_process.send(&msg[..]);
         }
-        if rank == r {
+        if r == next_rank {
             let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
-            received.append(&mut rec);
+
+            local_leaves.append(&mut rec)
         }
     }
 
@@ -472,6 +471,42 @@ pub fn block_partition(
     q
 }
 
+
+/// Split **Blocks** to satisfy a maximum of NCRIT particles per node in the final octree.
+pub fn split_blocks(
+    local_blocktree: &mut Keys, mut local_leaves: &mut Leaves, depth: &u64, ncrit: &u64
+) {
+    loop {
+        let mut to_split: Vec<Key> = Vec::new();
+
+        let mut i = 0;
+        for block in local_blocktree.iter() {
+            let npoints = local_leaves
+                .iter()
+                .filter(|l| l.block == *block)
+                .fold(0, |acc, l| acc + l.npoints());
+
+            if npoints > *ncrit {
+                to_split.push(*block);
+            }
+            else {
+                i+=1;
+            }
+        }
+        if i == local_blocktree.len() {
+            break
+        } else {
+            for block in to_split.iter() {
+                let mut children = find_children(block, &depth);
+                local_blocktree.retain(|l| l != block);
+                local_blocktree.append(&mut children);
+            }
+            assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, &depth);
+        }
+    }
+}
+
+
 /// Perform parallelised sample sort on a distributed set of **Leaves**.
 pub fn sample_sort(
     local_leaves: &[Leaf],
@@ -541,6 +576,9 @@ pub fn sample_sort(
     received_leaves.sort();
     received_leaves
 }
+
+
+
 
 mod tests {
     use super::*;

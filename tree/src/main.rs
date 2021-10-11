@@ -8,13 +8,15 @@ use tree::morton::{encode_points, keys_to_leaves, Point};
 use tree::tree::{
     assign_blocks_to_leaves, block_partition, complete_blocktree, find_block_weights, find_seeds,
     sample_sort, transfer_leaves_to_coarse_blocktree, transfer_leaves_to_final_blocktree,
-    unique_leaves,
+    unique_leaves, split_blocks
 };
 
 fn main() {
     // 0.i Experimental Parameters
     let depth: u64 = std::env::var("DEPTH").unwrap().parse().unwrap_or(3);
     let npoints: u64 = std::env::var("NPOINTS").unwrap().parse().unwrap_or(1000);
+    let ncrit : u64 = std::env::var("NCRIT").unwrap().parse().unwrap_or(1000);
+
 
     // 0.ii Setup Experiment and Distribute Leaves.
     let universe = mpi::initialize().unwrap();
@@ -59,22 +61,17 @@ fn main() {
     let sent_blocks = block_partition(weights, &mut local_blocktree, rank, size, world);
 
     // 6.ii For each sent block, send corresponding leaves to partner process.
-    let local_leaves =
+    let mut local_leaves =
         transfer_leaves_to_final_blocktree(&sent_blocks, local_leaves, size, rank, world);
 
-    println!("RANK {} final {}", rank, local_leaves.len());
-
-    // println!("blocks_{}=np.array([", rank);
-    // for block in local_blocktree {
-    //     println!("    [{}, {}, {}, {}],", block.0, block.1, block.2, block.3);
-    // }
-    // println!("])");
-
     // 7. Split blocks into adaptive tree, and pass into Octree structure.
+    split_blocks(&mut local_blocktree, &mut local_leaves, &depth, &ncrit);
 
     // 8. Compute interaction lists for each Octree
 
     // 9? Balance
+
+    println!("Rank {} Number of Nodes {}", rank, local_blocktree.len());
 
     // Print runtime to stdout
     world.barrier();
