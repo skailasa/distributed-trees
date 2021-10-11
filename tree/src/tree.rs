@@ -580,7 +580,7 @@ pub fn sample_sort(
 }
 
 
-/// Generate an unbalanced tree
+/// Generate a distributed unbalanced tree from a set of distributed points.
 pub fn unbalanced_tree(
     depth: &u64, ncrit: &u64, universe: Universe, points: PointsVec, x0: Point, r0: f64
 ) {
