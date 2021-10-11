@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use memoffset::offset_of;
 use mpi::{
-    environment::Universe,
     collective::SystemOperation,
     datatype::{Equivalence, UncommittedUserDatatype, UserDatatype},
+    environment::Universe,
     topology::{Rank, SystemCommunicator},
     traits::*,
     Address,
@@ -12,9 +12,9 @@ use mpi::{
 use rand::{thread_rng, Rng};
 
 use crate::morton::{
-    encode_points, keys_to_leaves, find_ancestors, find_children, find_deepest_first_descendent,
-    find_deepest_last_descendent, find_finest_common_ancestor, Key, Keys, Leaf, Leaves, PointsVec,
-    Point, MAX_POINTS,
+    encode_points, find_ancestors, find_children, find_deepest_first_descendent,
+    find_deepest_last_descendent, find_finest_common_ancestor, keys_to_leaves, Key, Keys, Leaf,
+    Leaves, Point, PointsVec, MAX_POINTS,
 };
 
 /// Sample density for over sampled parallel Sample Sort implementation.
@@ -342,8 +342,7 @@ pub fn transfer_leaves_to_final_blocktree(
 
     // Remove these leaves from the local leaves
     for &block in sent_blocks.iter() {
-        local_leaves
-            .retain(|l| l.block != block)
+        local_leaves.retain(|l| l.block != block)
     }
 
     for r in 0..size {
@@ -473,10 +472,12 @@ pub fn block_partition(
     q
 }
 
-
 /// Split **Blocks** to satisfy a maximum of NCRIT particles per node in the final octree.
 pub fn split_blocks(
-    local_blocktree: &mut Keys, mut local_leaves: &mut Leaves, depth: &u64, ncrit: &u64
+    local_blocktree: &mut Keys,
+    mut local_leaves: &mut Leaves,
+    depth: &u64,
+    ncrit: &u64,
 ) {
     loop {
         let mut to_split: Vec<Key> = Vec::new();
@@ -490,24 +491,22 @@ pub fn split_blocks(
 
             if npoints > *ncrit {
                 to_split.push(*block);
-            }
-            else {
-                i+=1;
+            } else {
+                i += 1;
             }
         }
         if i == local_blocktree.len() {
-            break
+            break;
         } else {
             for block in to_split.iter() {
                 let mut children = find_children(block, &depth);
                 local_blocktree.retain(|l| l != block);
                 local_blocktree.append(&mut children);
             }
-            assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, &depth);
+            assign_blocks_to_leaves(&mut local_leaves, local_blocktree, depth);
         }
     }
 }
-
 
 /// Perform parallelised sample sort on a distributed set of **Leaves**.
 pub fn sample_sort(
@@ -579,17 +578,20 @@ pub fn sample_sort(
     received_leaves
 }
 
-
 /// Generate a distributed unbalanced tree from a set of distributed points.
 pub fn unbalanced_tree(
-    depth: &u64, ncrit: &u64, universe: Universe, points: PointsVec, x0: Point, r0: f64
+    depth: &u64,
+    ncrit: &u64,
+    universe: Universe,
+    points: PointsVec,
+    x0: Point,
+    r0: f64,
 ) {
-
     let world = universe.world();
     let rank = world.rank();
     let size = world.size();
 
-    let keys = encode_points(&points, &depth, &depth, &x0, &r0);
+    let keys = encode_points(&points, depth, depth, &x0, &r0);
     let local_leaves = keys_to_leaves(keys, points, true);
 
     // 2. Perform parallel Morton sort over leaves
@@ -599,7 +601,7 @@ pub fn unbalanced_tree(
     let mut local_leaves = unique_leaves(local_leaves, true);
 
     // 4.i Complete minimal tree on each process, and find seed octants.
-    let mut seeds = find_seeds(&local_leaves, &depth);
+    let mut seeds = find_seeds(&local_leaves, depth);
 
     // 4.ii If leaf is less than the minimum seed in a given process, it needs to be sent to the
     // previous process
@@ -609,10 +611,10 @@ pub fn unbalanced_tree(
         transfer_leaves_to_coarse_blocktree(&local_leaves, &seeds, rank, world, size);
 
     // 5. Complete minimal block-tree across processes
-    let mut local_blocktree = complete_blocktree(&mut seeds, &depth, rank, size, world);
+    let mut local_blocktree = complete_blocktree(&mut seeds, depth, rank, size, world);
 
     // Associate leaves with blocks
-    assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, &depth);
+    assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, depth);
 
     let weights = find_block_weights(&local_leaves, &local_blocktree);
 
@@ -624,12 +626,10 @@ pub fn unbalanced_tree(
         transfer_leaves_to_final_blocktree(&sent_blocks, local_leaves, size, rank, world);
 
     // 7. Split blocks into adaptive tree, and pass into Octree structure.
-    split_blocks(&mut local_blocktree, &mut local_leaves, &depth, &ncrit);
+    split_blocks(&mut local_blocktree, &mut local_leaves, depth, ncrit);
 
     println!("Rank {} Number of Nodes {}", rank, local_blocktree.len());
-
 }
-
 
 mod tests {
     use super::*;
