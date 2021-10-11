@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use memoffset::offset_of;
 use mpi::{
+    environment::Universe,
     collective::SystemOperation,
     datatype::{Equivalence, UncommittedUserDatatype, UserDatatype},
     topology::{Rank, SystemCommunicator},
@@ -11,8 +12,9 @@ use mpi::{
 use rand::{thread_rng, Rng};
 
 use crate::morton::{
-    find_ancestors, find_children, find_deepest_first_descendent, find_deepest_last_descendent,
-    find_finest_common_ancestor, Key, Keys, Leaf, Leaves, MAX_POINTS,
+    encode_points, keys_to_leaves, find_ancestors, find_children, find_deepest_first_descendent,
+    find_deepest_last_descendent, find_finest_common_ancestor, Key, Keys, Leaf, Leaves, PointsVec,
+    Point, MAX_POINTS,
 };
 
 /// Sample density for over sampled parallel Sample Sort implementation.
@@ -578,6 +580,55 @@ pub fn sample_sort(
 }
 
 
+/// Generate an unbalanced tree
+pub fn unbalanced_tree(
+    depth: &u64, ncrit: &u64, universe: Universe, points: PointsVec, x0: Point, r0: f64
+) {
+
+    let world = universe.world();
+    let rank = world.rank();
+    let size = world.size();
+
+    let keys = encode_points(&points, &depth, &depth, &x0, &r0);
+    let local_leaves = keys_to_leaves(keys, points, true);
+
+    // 2. Perform parallel Morton sort over leaves
+    let local_leaves = sample_sort(&local_leaves, size, rank, world);
+
+    // 3. Remove duplicates at each processor and remove overlaps if there are any
+    let mut local_leaves = unique_leaves(local_leaves, true);
+
+    // 4.i Complete minimal tree on each process, and find seed octants.
+    let mut seeds = find_seeds(&local_leaves, &depth);
+
+    // 4.ii If leaf is less than the minimum seed in a given process, it needs to be sent to the
+    // previous process
+    local_leaves.sort();
+
+    let mut local_leaves =
+        transfer_leaves_to_coarse_blocktree(&local_leaves, &seeds, rank, world, size);
+
+    // 5. Complete minimal block-tree across processes
+    let mut local_blocktree = complete_blocktree(&mut seeds, &depth, rank, size, world);
+
+    // Associate leaves with blocks
+    assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, &depth);
+
+    let weights = find_block_weights(&local_leaves, &local_blocktree);
+
+    // 6.i Re-balance blocks based on load, find out which blocks were sent to partner.
+    let sent_blocks = block_partition(weights, &mut local_blocktree, rank, size, world);
+
+    // 6.ii For each sent block, send corresponding leaves to partner process.
+    let mut local_leaves =
+        transfer_leaves_to_final_blocktree(&sent_blocks, local_leaves, size, rank, world);
+
+    // 7. Split blocks into adaptive tree, and pass into Octree structure.
+    split_blocks(&mut local_blocktree, &mut local_leaves, &depth, &ncrit);
+
+    println!("Rank {} Number of Nodes {}", rank, local_blocktree.len());
+
+}
 
 
 mod tests {
