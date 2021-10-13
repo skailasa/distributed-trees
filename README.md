@@ -34,7 +34,7 @@ We initially build an unbalanced tree from particle coordinate data distributed 
 
 6. Compute load of each block and repartition them such that each processor has a similar load. Load is estimated by computing the number of leaf octants that they could hold. [X]
 
-7. Partition the blocks to satisfy the NCRIT value specified by the user. []
+7. Partition the blocks to satisfy the NCRIT value specified by the user. [X]
 
 ## Balancing Phase
 
