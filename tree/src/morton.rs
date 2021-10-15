@@ -10,7 +10,7 @@ use mpi::{
 use rayon::prelude::*;
 
 /// Maximum points per **Leaf**
-pub const MAX_POINTS: usize = 150;
+pub const MAX_POINTS: usize = 50;
 
 /// Used as an integer sentinel value.
 const SENTINEL: KeyType = 999;
@@ -18,14 +18,16 @@ const SENTINEL: KeyType = 999;
 type PointType = f64;
 #[derive(Clone, Copy, Debug)]
 /// **Point**, Cartesian coordinates (x, y, z).
-pub struct Point(pub PointType, pub PointType, pub PointType);
-/// Vector of **Points**.
-pub type PointsVec = Vec<Point>;
+pub struct Point {
+    pub x: PointType,
+    pub y: PointType,
+    pub z: PointType,
+    pub key: Key,
+    pub global_idx: usize,
+}
 
-#[derive(Clone, Copy, Debug)]
-/// **Points Array**, fixed size of **MAX_POINTS**. Used for describing points contained in a given
-/// Leaf.
-pub struct PointsArray(pub [Point; MAX_POINTS]);
+/// Vector of **Points**.
+pub type Points = Vec<Point>;
 
 type KeyType = u64;
 #[derive(Clone, Copy, Debug)]
@@ -34,13 +36,14 @@ pub struct Key(pub KeyType, pub KeyType, pub KeyType, pub KeyType);
 /// Vector of **Keys**.
 pub type Keys = Vec<Key>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 /// **Leaf Key**, bundles **Morton Key**, associated **Block** and particle **Points** it contains.
 pub struct Leaf {
     pub key: Key,
     pub block: Key,
-    pub points: PointsArray,
+    pub npoints: usize,
 }
+
 /// Vector of **Leaves**.
 pub type Leaves = Vec<Leaf>;
 
@@ -52,15 +55,13 @@ impl Default for Key {
 
 impl Default for Point {
     fn default() -> Self {
-        Point(PointType::NAN, PointType::NAN, PointType::NAN)
-    }
-}
-
-impl Default for PointsArray {
-    fn default() -> Self {
-        let default = Point::default();
-        let points = [default; MAX_POINTS];
-        PointsArray(points)
+        Point {
+            x: PointType::NAN,
+            y: PointType::NAN,
+            z: PointType::NAN,
+            key: Key::default(),
+            global_idx: 0,
+        }
     }
 }
 
@@ -69,21 +70,8 @@ impl Default for Leaf {
         Leaf {
             key: Key::default(),
             block: Key::default(),
-            points: PointsArray::default(),
+            npoints: 0,
         }
-    }
-}
-
-impl Leaf {
-    /// Function to calculate the number of points contained in a **Leaf**.
-    pub fn npoints(&self) -> u64 {
-        let npoints: u64 = self
-            .points
-            .0
-            .iter()
-            .filter(|&&n| !n.0.is_nan() & !n.1.is_nan() & !n.2.is_nan())
-            .count() as u64;
-        npoints
     }
 }
 
@@ -228,7 +216,7 @@ impl Hash for Leaf {
 
 impl PartialEq for Point {
     fn eq(&self, other: &Self) -> bool {
-        (self.0 == other.0) & (self.1 == other.1) & (self.2 == other.2)
+        (self.x == other.x) & (self.y == other.y) & (self.z == other.z)
     }
 }
 
@@ -263,7 +251,7 @@ unsafe impl Equivalence for Leaf {
             &[
                 offset_of!(Leaf, key) as Address,
                 offset_of!(Leaf, block) as Address,
-                offset_of!(Leaf, points) as Address,
+                offset_of!(Leaf, npoints) as Address,
             ],
             &[
                 UncommittedUserDatatype::structured(
@@ -306,12 +294,49 @@ unsafe impl Equivalence for Leaf {
                     ],
                 )
                 .as_ref(),
+                UncommittedUserDatatype::contiguous(1, &usize::equivalent_datatype()).as_ref(),
+            ],
+        )
+    }
+}
+
+unsafe impl Equivalence for Point {
+    type Out = UserDatatype;
+    fn equivalent_datatype() -> Self::Out {
+        UserDatatype::structured(
+            &[1, 1, 1, 1, 1],
+            &[
+                offset_of!(Point, x) as Address,
+                offset_of!(Point, y) as Address,
+                offset_of!(Point, z) as Address,
+                offset_of!(Point, key) as Address,
+                offset_of!(Point, global_idx) as Address,
+            ],
+            &[
+                UncommittedUserDatatype::contiguous(1, &f64::equivalent_datatype()).as_ref(),
+                UncommittedUserDatatype::contiguous(1, &f64::equivalent_datatype()).as_ref(),
+                UncommittedUserDatatype::contiguous(1, &f64::equivalent_datatype()).as_ref(),
                 UncommittedUserDatatype::structured(
-                    &[(MAX_POINTS * 3) as i32],
-                    &[offset_of!(PointsArray, 0) as Address],
-                    &[f64::equivalent_datatype()],
+                    &[1, 1, 1, 1],
+                    &[
+                        offset_of!(Key, 0) as Address,
+                        offset_of!(Key, 1) as Address,
+                        offset_of!(Key, 2) as Address,
+                        offset_of!(Key, 3) as Address,
+                    ],
+                    &[
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype())
+                            .as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype())
+                            .as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype())
+                            .as_ref(),
+                        UncommittedUserDatatype::contiguous(1, &u64::equivalent_datatype())
+                            .as_ref(),
+                    ],
                 )
                 .as_ref(),
+                UncommittedUserDatatype::contiguous(1, &usize::equivalent_datatype()).as_ref(),
             ],
         )
     }
@@ -394,22 +419,26 @@ pub fn find_children(key: &Key, depth: &u64) -> Keys {
 }
 
 /// Encode a **Point** in a **Morton Key**.
-pub fn encode_point(&point: &Point, &level: &u64, &depth: &u64, &x0: &Point, &r0: &f64) -> Key {
+pub fn encode_point(mut point: &mut Point, &level: &u64, &depth: &u64, &x0: &Point, &r0: &f64) {
     let mut key = Key(0, 0, 0, level);
-    let displacement = Point(x0.0 - r0, x0.1 - r0, x0.2 - r0);
+    let mut displacement = x0;
+    displacement.x = x0.x - r0;
+    displacement.y = x0.y - r0;
+    displacement.z = x0.z - r0;
+
     let side_length: f64 = (r0 * 2.) / ((1 << depth) as f64);
 
-    key.0 = ((point.0 - displacement.0) / side_length).floor() as u64;
-    key.1 = ((point.1 - displacement.1) / side_length).floor() as u64;
-    key.2 = ((point.2 - displacement.2) / side_length).floor() as u64;
-    key
+    key.0 = ((point.x - displacement.x) / side_length).floor() as u64;
+    key.1 = ((point.y - displacement.y) / side_length).floor() as u64;
+    key.2 = ((point.z - displacement.z) / side_length).floor() as u64;
+    point.key = key;
 }
 
 /// Encode a vector of **Points** with their corresponding Morton keys at a given discretisation
 /// in parallel.
-pub fn encode_points(points: &[Point], level: &u64, depth: &u64, x0: &Point, r0: &f64) -> Keys {
+pub fn encode_points(points: &mut [Point], level: &u64, depth: &u64, x0: &Point, r0: &f64) {
     points
-        .par_iter()
+        .par_iter_mut()
         .map(|p| encode_point(p, level, depth, x0, r0))
         .collect()
 }
@@ -483,52 +512,40 @@ pub fn find_descendants(key: &Key, depth: &u64) -> Keys {
     descendants
 }
 
-/// Convert **Morton Keys** corresponding by their indices to a vector of **Points**, to a vector
-/// of unique **Leaves**, containing the **Point** data.
-pub fn keys_to_leaves(mut keys: Keys, points: PointsVec, sorted: bool) -> Leaves {
-    // Only works if keys are sorted.
-    if !sorted {
-        keys.sort();
-    }
+/// Convert a vector of **Points**, to a Vector of **Leaves**.
+pub fn keys_to_leaves(mut points: &mut [Point], ncrit: &usize) -> Leaves {
+    // Sort points by Leaf key
+    points.sort_by(|a, b| a.key.cmp(&b.key));
 
-    let mut points_to_keys: Vec<_> = points.iter().zip(keys.iter()).collect();
-    points_to_keys.sort_by(|a, b| a.1.cmp(b.1));
-
-    let mut curr = Key(SENTINEL, SENTINEL, SENTINEL, SENTINEL);
+    // Find unique Leaf keys
+    let mut key_indices: Vec<usize> = Vec::new();
+    let mut curr = Key::default();
     let mut unique_keys: Keys = Vec::new();
     let mut key_indices: Vec<usize> = Vec::new();
 
-    for (i, &(_, &key)) in points_to_keys.iter().enumerate() {
-        if curr != key {
-            curr = key;
+    for (i, &p) in points.iter().enumerate() {
+        if curr != p.key {
+            curr = p.key;
             unique_keys.push(curr);
             key_indices.push(i)
         }
     }
-
-    key_indices.push(points_to_keys.len());
+    key_indices.push(points.len());
 
     let mut leaves: Leaves = Vec::new();
 
-    // Fill up buffer of leaf keys
-    for (i, key) in unique_keys.iter().enumerate() {
-        let mut points = PointsArray([Point::default(); MAX_POINTS]);
-        let lidx = key_indices[i];
-        let ridx = key_indices[i + 1];
-
-        for (j, p2k) in points_to_keys.iter().enumerate().take(ridx).skip(lidx) {
-            let k = ridx - 1 - j;
-            points.0[k] = *p2k.0
-        }
+    for (i, &key) in unique_keys.iter().enumerate() {
+        let npoints = key_indices[i + 1] - key_indices[i];
 
         let leaf = Leaf {
-            key: Key(key.0, key.1, key.2, key.3),
+            key,
             block: Key::default(),
-            points,
+            npoints,
         };
 
         leaves.push(leaf);
     }
+
     leaves
 }
 
@@ -680,27 +697,23 @@ mod tests {
     }
 
     #[test]
-    fn test_npoints() {
-        let mut leaf = Leaf {
-            key: Key::default(),
-            block: Key::default(),
-            points: PointsArray::default(),
-        };
-
-        assert_eq!(leaf.npoints(), 0);
-    }
-
-    #[test]
     fn test_keys_to_leaves() {
-        let npoints = 800;
-        let points = random(npoints);
+        let npoints = 342;
+        let ncrit = 50;
+        let mut points = random(npoints);
         let level = 1;
         let depth = 1;
-        let x0 = Point(0.5, 0.5, 0.5);
+        let x0 = Point {
+            x: 0.5,
+            y: 0.5,
+            z: 0.5,
+            global_idx: 0,
+            key: Key::default(),
+        };
         let r0 = 0.5;
-        let keys = encode_points(&points, &level, &depth, &x0, &r0);
-        let unique_keys: Keys = keys.iter().unique().cloned().collect();
-        let leaves = keys_to_leaves(keys, points, true);
+        encode_points(&mut points, &level, &depth, &x0, &r0);
+        let unique_keys: Keys = points.iter().map(|p| p.key).unique().clone().collect();
+        let leaves = keys_to_leaves(&mut points, &ncrit);
 
         // Test that no keys are dropped
         assert_eq!(unique_keys.len(), leaves.len());
@@ -708,8 +721,8 @@ mod tests {
         // Test that no points are dropped
         let mut nleaf_points = 0;
         for leaf in leaves {
-            nleaf_points += leaf.npoints();
+            nleaf_points += leaf.npoints;
         }
-        assert_eq!(npoints, nleaf_points);
+        assert_eq!(npoints as usize, nleaf_points);
     }
 }

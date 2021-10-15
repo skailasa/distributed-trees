@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use memoffset::offset_of;
 use mpi::{
@@ -14,7 +14,7 @@ use rand::{thread_rng, Rng};
 use crate::morton::{
     encode_points, find_ancestors, find_children, find_deepest_first_descendent,
     find_deepest_last_descendent, find_finest_common_ancestor, keys_to_leaves, Key, Keys, Leaf,
-    Leaves, Point, PointsVec, MAX_POINTS,
+    Leaves, Point, Points,
 };
 
 /// Sample density for over sampled parallel Sample Sort implementation.
@@ -22,6 +22,9 @@ const K: usize = 10;
 
 /// Null process marker for MPI functions.
 pub const MPI_PROC_NULL: i32 = -1;
+
+/// Type alias for a tree data structure.
+pub type Tree = HashMap<Key, Leaves>;
 
 #[derive(Debug, Copy, Clone)]
 /// **Weight** of a given **Block**. Defined by number of original **Leaf** nodes it contains.
@@ -77,8 +80,8 @@ pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
     minimal_tree
 }
 
-/// Find unique **Leaves**, and merge together their point sets.
-pub fn unique_leaves(mut leaves: Leaves, sorted: bool) -> Leaves {
+/// Make **Leaves** unique, check that they don't exceed 'ncrit' points per leaf.
+pub fn unique_leaves(mut leaves: Leaves, ncrit: &usize, sorted: bool) -> Leaves {
     // Container for result
     let mut unique: Leaves = Vec::new();
 
@@ -87,46 +90,25 @@ pub fn unique_leaves(mut leaves: Leaves, sorted: bool) -> Leaves {
         leaves.sort();
     }
 
-    let mut leaf_indices: Vec<usize> = Vec::new();
-    let mut nunique = 0;
-    let mut curr = Leaf::default();
+    // Find number of unique leaves, and their indices
+    let mut curr_idx: usize = 0;
+    let mut curr = leaves[curr_idx].clone();
+    unique.push(curr);
 
-    for (i, leaf) in leaves.iter().enumerate() {
-        if curr != *leaf {
-            curr = leaf.clone();
-            leaf_indices.push(i);
-            nunique += 1;
-        }
-    }
-
-    leaf_indices.push(leaves.len());
-
-    for i in 0..nunique {
-        let lidx = leaf_indices[i as usize];
-        let ridx = leaf_indices[(i + 1) as usize];
-
-        // Pick out leaves in this range, and combine their points
-        let mut acc = leaves[lidx].clone();
-
-        let mut points_idx = acc.npoints() as usize;
-
-        for leaf in leaves.iter().take(ridx).skip(lidx + 1) {
-            let npoints = leaf.npoints() as usize;
-
-            for k in 0..npoints {
-                if (points_idx + k) >= MAX_POINTS {
-                    panic!(
-                        "You are packing too many points into leaf,
-                        you need to increase the depth of your tree!"
-                    )
-                }
-
-                acc.points.0[points_idx + k] = leaf.points.0[k];
+    // println!("HERE {:?}", leaves);
+    for &leaf in leaves.iter().skip(1) {
+        if curr != leaf {
+            unique.push(curr);
+            curr_idx += 1;
+            curr = leaf;
+        } else {
+            let n = unique[curr_idx].npoints + leaf.npoints;
+            if n <= *ncrit {
+                unique[curr_idx].npoints += leaf.npoints;
+            } else {
+                panic!("You are packing too many points into a leaf, increase tree depth!")
             }
-
-            points_idx += npoints;
         }
-        unique.push(acc);
     }
     unique
 }
@@ -168,21 +150,21 @@ pub fn find_seeds(local_leaves: &[Leaf], depth: &u64) -> Keys {
 /// smaller than the minimum **Seed** on  a given processor must be handed to its partner from
 /// algorithm 4 of [1].
 pub fn transfer_leaves_to_coarse_blocktree(
+    points: &[Point],
     local_leaves: &[Leaf],
+    mut received_points: &mut Points,
+    mut received_leaves: &mut Leaves,
     seeds: &[Key],
     rank: Rank,
     world: SystemCommunicator,
     size: Rank,
-) -> Leaves {
-    #![allow(unused_variables)]
+) {
     let mut min_seed = Key::default();
     if rank == 0 {
         min_seed = local_leaves.iter().min().unwrap().key;
     } else {
         min_seed = *seeds.iter().min().unwrap();
     }
-
-    let mut received: Leaves = Vec::new();
 
     let prev_rank = rank - 1;
 
@@ -198,7 +180,22 @@ pub fn transfer_leaves_to_coarse_blocktree(
 
     if rank < (size - 1) {
         let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
-        received.append(&mut rec);
+        received_leaves.append(&mut rec);
+    }
+
+    if rank > 0 {
+        let msg: Points = points
+            .iter()
+            .filter(|&l| l.key < min_seed)
+            .cloned()
+            .collect();
+
+        world.process_at_rank(prev_rank).send(&msg[..]);
+    }
+
+    if rank < (size - 1) {
+        let (mut rec, _) = world.any_process().receive_vec::<Point>();
+        received_points.append(&mut rec);
     }
 
     let mut local_leaves: Leaves = local_leaves
@@ -207,9 +204,17 @@ pub fn transfer_leaves_to_coarse_blocktree(
         .cloned()
         .collect();
 
-    local_leaves.append(&mut received);
-    local_leaves.sort();
-    local_leaves
+    let mut points: Points = points
+        .iter()
+        .filter(|&l| l.key >= min_seed)
+        .cloned()
+        .collect();
+
+    received_leaves.append(&mut local_leaves);
+    received_points.append(&mut points);
+
+    // Re Sort received leaves
+    received_leaves.sort();
 }
 
 /// Remove overlaps from a list of octants, algorithm 7 in [1].
@@ -299,6 +304,9 @@ pub fn assign_blocks_to_leaves(local_leaves: &mut Leaves, local_blocktree: &[Key
         for ancestor in ancestors {
             if local_blocktree_set.contains(&ancestor) {
                 leaf.block = ancestor;
+                break;
+            } else if local_blocktree.contains(&leaf.key) {
+                leaf.block = leaf.key;
                 break;
             }
         }
@@ -474,49 +482,60 @@ pub fn block_partition(
 
 /// Split **Blocks** to satisfy a maximum of NCRIT particles per node in the final octree.
 pub fn split_blocks(
-    local_blocktree: &mut Keys,
+    mut local_blocktree: &mut Keys,
     mut local_leaves: &mut Leaves,
     depth: &u64,
-    ncrit: &u64,
-) {
+    ncrit: &usize,
+) -> HashMap<Key, Leaves> {
+    let mut blocks: HashMap<Key, Leaves> = HashMap::new();
+
+    for &leaf in local_leaves.iter() {
+        blocks.entry(leaf.block).or_default().push(leaf);
+    }
+
     loop {
-        let mut to_split: Vec<Key> = Vec::new();
-
-        let mut i = 0;
-        for block in local_blocktree.iter() {
-            let npoints = local_leaves
-                .iter()
-                .filter(|l| l.block == *block)
-                .fold(0, |acc, l| acc + l.npoints());
-
-            if npoints > *ncrit {
-                to_split.push(*block);
-            } else {
-                i += 1;
+        let mut to_split: Keys = Vec::new();
+        for (&key, leaves) in blocks.iter() {
+            let mut npoints = 0;
+            for leaf in leaves {
+                npoints += leaf.npoints;
+                if npoints > *ncrit {
+                    to_split.push(key);
+                    break;
+                }
             }
         }
-        if i == local_blocktree.len() {
-            break;
-        } else {
-            for block in to_split.iter() {
-                let mut children = find_children(block, &depth);
-                local_blocktree.retain(|l| l != block);
-                local_blocktree.append(&mut children);
+
+        if to_split.len() > 0 {
+            for &key in to_split.iter() {
+                let mut leaves = blocks.get(&key).unwrap().clone();
+                let children = find_children(&key, depth);
+                blocks.remove(&key);
+                assign_blocks_to_leaves(&mut leaves, &children, depth);
+
+                for &leaf in leaves.iter() {
+                    blocks.entry(leaf.block).or_default().push(leaf);
+                }
             }
-            assign_blocks_to_leaves(&mut local_leaves, local_blocktree, depth);
+        } else {
+            break;
         }
     }
+
+    blocks
 }
 
 /// Perform parallelised sample sort on a distributed set of **Leaves**.
 pub fn sample_sort(
-    local_leaves: &[Leaf],
+    mut points: &mut Points,
+    ncrit: &usize,
+    received_leaves: &mut Leaves,
+    received_points: &mut Points,
     size: Rank,
     rank: Rank,
     world: SystemCommunicator,
-) -> Leaves {
-    // Buffer for receiving partner keys
-    let mut received_leaves: Leaves = Vec::new();
+) {
+    let local_leaves = keys_to_leaves(&mut points, ncrit);
 
     let mut received_samples = vec![Leaf::default(); K * (size as usize)];
     let nleaves = local_leaves.len();
@@ -543,6 +562,8 @@ pub fn sample_sort(
 
     // 2. Sort local leaves into buckets
     let mut buckets: Vec<Leaves> = vec![Vec::new(); size as usize];
+    // Sort local points into corresponding buckets
+    let mut buckets_points: Vec<Points> = vec![Vec::new(); size as usize];
 
     for leaf in local_leaves.iter() {
         for i in 0..(size as usize) {
@@ -558,57 +579,113 @@ pub fn sample_sort(
         }
     }
 
+    for point in points.iter() {
+        for i in 0..(size as usize) {
+            if i < nsplitters {
+                let s = &splitters[i];
+                if point.key < s.key {
+                    buckets_points[i].push(point.clone());
+                    break;
+                }
+            } else {
+                buckets_points[i].push(point.clone())
+            }
+        }
+    }
+
     // 3. Send all local buckets to their matching processor.
     for r in 0..size {
         if rank != r {
-            let msg = &buckets[r as usize];
-            world.process_at_rank(r).send(&msg[..]);
+            // let sent_leaves = &buckets[r as usize];
+            let sent = &buckets_points[r as usize];
+            world.process_at_rank(r).send(&sent[..]);
         } else {
             for _ in 1..world.size() {
-                let (mut msg, _) = world.any_process().receive_vec::<Leaf>();
-                received_leaves.append(&mut msg);
+                // let (mut rec_leaves, _) = world.any_process().receive_vec::<Leaf>();
+                let (mut rec, _) = world.any_process().receive_vec::<Point>();
+                received_points.append(&mut rec);
             }
         }
         world.barrier();
     }
-
+    for r in 0..size {
+        if rank != r {
+            let sent = &buckets[r as usize];
+            world.process_at_rank(r).send(&sent[..]);
+        } else {
+            for _ in 1..world.size() {
+                let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
+                received_leaves.append(&mut rec);
+            }
+        }
+        world.barrier();
+    }
     // 4. Sort leaves on matching processors.
     received_leaves.append(&mut buckets[rank as usize]);
+    received_points.append(&mut buckets_points[rank as usize]);
     received_leaves.sort();
-    received_leaves
 }
 
 /// Generate a distributed unbalanced tree from a set of distributed points.
 pub fn unbalanced_tree(
     depth: &u64,
-    ncrit: &u64,
+    ncrit: &usize,
     universe: Universe,
-    points: PointsVec,
+    mut points: &mut Points,
     x0: Point,
     r0: f64,
-) {
+) -> Tree {
     let world = universe.world();
     let rank = world.rank();
     let size = world.size();
 
-    let keys = encode_points(&points, depth, depth, &x0, &r0);
-    let local_leaves = keys_to_leaves(keys, points, true);
+    // 1. Encode points to leaf keys inplace.
+    encode_points(&mut points, &depth, &depth, &x0, &r0);
 
-    // 2. Perform parallel Morton sort over leaves
-    let local_leaves = sample_sort(&local_leaves, size, rank, world);
+    // Temporary buffer for receiving partner keys
+    let mut sorted_leaves: Leaves = Vec::new();
+    let mut sorted_points: Points = Vec::new();
+
+    // 2. Perform parallel Morton sort over points
+    sample_sort(
+        &mut points,
+        &ncrit,
+        &mut sorted_leaves,
+        &mut sorted_points,
+        size,
+        rank,
+        world,
+    );
+
+    let points = sorted_points;
+    let local_leaves = sorted_leaves;
 
     // 3. Remove duplicates at each processor and remove overlaps if there are any
-    let mut local_leaves = unique_leaves(local_leaves, true);
+    let local_leaves = unique_leaves(local_leaves, ncrit, true);
 
     // 4.i Complete minimal tree on each process, and find seed octants.
     let mut seeds = find_seeds(&local_leaves, depth);
 
     // 4.ii If leaf is less than the minimum seed in a given process, it needs to be sent to the
     // previous process
-    local_leaves.sort();
 
-    let mut local_leaves =
-        transfer_leaves_to_coarse_blocktree(&local_leaves, &seeds, rank, world, size);
+    // Temporary buffers to receive points and leaves to coarse block tree.
+    let mut received_leaves: Leaves = Vec::new();
+    let mut received_points: Points = Vec::new();
+
+    transfer_leaves_to_coarse_blocktree(
+        &points,
+        &local_leaves,
+        &mut received_points,
+        &mut received_leaves,
+        &seeds,
+        rank,
+        world,
+        size,
+    );
+
+    let mut local_leaves = received_leaves;
+    let points = received_points;
 
     // 5. Complete minimal block-tree across processes
     let mut local_blocktree = complete_blocktree(&mut seeds, depth, rank, size, world);
@@ -616,61 +693,16 @@ pub fn unbalanced_tree(
     // Associate leaves with blocks
     assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, depth);
 
-    let weights = find_block_weights(&local_leaves, &local_blocktree);
+    // 6. Split blocks into adaptive tree, and pass into Octree structure.
+    let nodes = split_blocks(&mut local_blocktree, &mut local_leaves, depth, ncrit);
 
-    // 6.i Re-balance blocks based on load, find out which blocks were sent to partner.
-    let sent_blocks = block_partition(weights, &mut local_blocktree, rank, size, world);
-
-    // 6.ii For each sent block, send corresponding leaves to partner process.
-    let mut local_leaves =
-        transfer_leaves_to_final_blocktree(&sent_blocks, local_leaves, size, rank, world);
-
-    // 7. Split blocks into adaptive tree, and pass into Octree structure.
-    split_blocks(&mut local_blocktree, &mut local_leaves, depth, ncrit);
-
-    println!("Rank {} Number of Nodes {}", rank, local_blocktree.len());
+    nodes
 }
 
 mod tests {
     use super::*;
 
-    use crate::morton::{Point, PointsArray, MAX_POINTS};
-
-    #[test]
-    #[should_panic]
-    fn test_unique_panic() {
-        // Test that you cannot overpack a unique leaf when merging leaves.
-        let mut leaves: Leaves = vec![
-            Leaf {
-                key: Key(0, 0, 0, 1),
-                block: Key::default(),
-                points: PointsArray([Point::default(); MAX_POINTS]),
-            },
-            Leaf {
-                key: Key(0, 0, 0, 1),
-                block: Key::default(),
-                points: PointsArray([Point::default(); MAX_POINTS]),
-            },
-            Leaf {
-                key: Key(0, 0, 0, 1),
-                block: Key::default(),
-                points: PointsArray([Point::default(); MAX_POINTS]),
-            },
-            Leaf {
-                key: Key(0, 0, 0, 1),
-                block: Key::default(),
-                points: PointsArray([Point::default(); MAX_POINTS]),
-            },
-        ];
-
-        for mut leaf in &mut leaves {
-            for i in 0..150 {
-                leaf.points.0[i] = Point(0., 0., 0.);
-            }
-        }
-
-        let unique = unique_leaves(leaves, true);
-    }
+    use crate::morton::{Point, MAX_POINTS};
 
     #[test]
     fn test_unique() {
@@ -678,33 +710,25 @@ mod tests {
             Leaf {
                 key: Key(0, 0, 0, 1),
                 block: Key::default(),
-                points: PointsArray([Point::default(); MAX_POINTS]),
+                npoints: 11,
             },
             Leaf {
                 key: Key(0, 0, 0, 1),
                 block: Key::default(),
-                points: PointsArray([Point::default(); MAX_POINTS]),
+                npoints: 12,
             },
             Leaf {
                 key: Key(0, 0, 0, 1),
                 block: Key::default(),
-                points: PointsArray([Point::default(); MAX_POINTS]),
-            },
-            Leaf {
-                key: Key(0, 0, 0, 1),
-                block: Key::default(),
-                points: PointsArray([Point::default(); MAX_POINTS]),
+                npoints: 13,
             },
         ];
 
-        for mut leaf in &mut leaves {
-            for i in 0..4 {
-                leaf.points.0[i] = Point(0., 0., 0.);
-            }
-        }
+        let ncrit: usize = 50;
 
-        let unique = unique_leaves(leaves, true);
+        let unique = unique_leaves(leaves, &ncrit, true);
 
-        assert_eq!(unique[0].npoints(), 16)
+        println!("HERE: {:?}", unique);
+        assert_eq!(unique[0].npoints, 36)
     }
 }
