@@ -1,5 +1,5 @@
-use parallel_tests::sorting::*;
 use mpi::traits::*;
+use parallel_tests::sorting::*;
 
 fn main() {
     // 1. Test sample sort
@@ -11,5 +11,4 @@ fn main() {
         println!("Test sorting algorithms: ");
     }
     test_sample_sort(universe);
-
 }

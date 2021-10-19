@@ -142,7 +142,7 @@ pub fn find_seeds(local_leaves: &[Leaf], depth: &u64) -> Keys {
         if node.3 == coarsest_level {
             seed_idxs.push(i);
         }
-    };
+    }
 
     let seeds: Keys = seed_idxs.iter().map(|&i| complete[i as usize]).collect();
 
@@ -223,7 +223,6 @@ pub fn transfer_leaves_to_coarse_blocktree(
 /// Remove overlaps from a list of octants, algorithm 7 in [1], expects input keys to be sorted
 /// (sequential).
 pub fn linearise(keys: &mut Keys, depth: &u64) -> Keys {
-
     let mut linearised: Keys = Vec::new();
     for i in 0..(keys.len() - 1) {
         let curr = keys[i];
@@ -483,11 +482,7 @@ pub fn block_partition(
 
 /// Split **Blocks** to satisfy a maximum of NCRIT particles per node in the final octree
 /// (sequential).
-pub fn split_blocks(
-    local_leaves: &mut Leaves,
-    depth: &u64,
-    ncrit: &usize,
-) -> HashMap<Key, Leaves> {
+pub fn split_blocks(local_leaves: &mut Leaves, depth: &u64, ncrit: &usize) -> HashMap<Key, Leaves> {
     let mut blocks: HashMap<Key, Leaves> = HashMap::new();
 
     for &leaf in local_leaves.iter() {
@@ -703,8 +698,8 @@ pub fn unbalanced_tree(
 mod tests {
     use super::*;
 
-    use crate::morton::{Point, MAX_POINTS, find_siblings, find_finest_common_ancestor};
     use crate::data::random;
+    use crate::morton::{find_finest_common_ancestor, find_siblings, Point, MAX_POINTS};
 
     #[test]
     fn test_complete_region() {
@@ -727,7 +722,6 @@ mod tests {
             assert!(ancestors.contains(&fca));
         }
     }
-
 
     #[test]
     fn test_unique() {
@@ -757,7 +751,6 @@ mod tests {
     }
 
     fn test_linearise() {
-
         let key = Key(0, 0, 0, 1);
         let depth = 2;
         let mut children = find_children(&key, &depth);
@@ -766,7 +759,5 @@ mod tests {
         let linearised = linearise(&mut children, &depth);
 
         assert!(!linearised.contains(&key));
-
     }
-
 }

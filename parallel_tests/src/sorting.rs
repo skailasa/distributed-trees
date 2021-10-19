@@ -1,18 +1,16 @@
 extern crate mpi;
 extern crate tree;
 
+use mpi::environment::Universe;
 use mpi::traits::*;
-use mpi::topology::{SystemCommunicator, Rank};
-use mpi::environment::{Universe};
 
-use tree::tree::{sample_sort};
-use tree::morton::{encode_points, Point, Key, Leaves, Points};
 use tree::data::random;
+use tree::morton::{encode_points, Key, Leaves, Point, Points};
+use tree::tree::sample_sort;
 
 
-pub fn test_sample_sort(
-    universe: Universe
-) {
+// Test sample sort
+pub fn test_sample_sort(universe: Universe) {
     let world = universe.world();
     let rank = world.rank();
     let size = world.size();
@@ -33,7 +31,10 @@ pub fn test_sample_sort(
     let r0 = 0.5;
 
     if rank == 0 {
-        println!("Test Sample Sort with {} points across {} processes", npoints, size);
+        println!(
+            "Test Sample Sort with {} points across {} processes",
+            npoints, size
+        );
     }
 
     // 1. Encode points to leaf keys inplace.
@@ -60,7 +61,7 @@ pub fn test_sample_sort(
         let min: Key = sorted_leaves.iter().min_by_key(|p| p.key).unwrap().key as Key;
         world.process_at_rank(prev_rank).send(&min);
     }
-    if rank < (size-1) {
+    if rank < (size - 1) {
         let (rec, _) = world.any_process().receive_vec::<Key>();
         let max: Key = sorted_leaves.iter().max_by_key(|p| p.key).unwrap().key as Key;
         assert!(max <= rec[0]);
