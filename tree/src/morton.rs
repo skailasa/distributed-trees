@@ -495,7 +495,7 @@ pub fn find_deepest_last_descendent(key: &Key, depth: &u64) -> Key {
 }
 
 /// Convert a vector of **Points**, to a Vector of **Leaves**.
-pub fn keys_to_leaves(mut points: &mut [Point], ncrit: &usize) -> Leaves {
+pub fn keys_to_leaves(points: &mut [Point]) -> Leaves {
     // Sort points by Leaf key
     points.sort_by(|a, b| a.key.cmp(&b.key));
 
@@ -743,7 +743,7 @@ mod tests {
         let r0 = 0.5;
         encode_points(&mut points, &level, &depth, &x0, &r0);
         let unique_keys: Keys = points.iter().map(|p| p.key).unique().clone().collect();
-        let leaves = keys_to_leaves(&mut points, &ncrit);
+        let leaves = keys_to_leaves(&mut points);
 
         // Test that no keys are dropped
         assert_eq!(unique_keys.len(), leaves.len());

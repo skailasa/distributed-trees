@@ -75,11 +75,13 @@ Run serial tests for sequential functions in tree library:
 cd tree && cargo test
 ```
 
-Run parallel (integration) tests for public API:
+Run tests for public MPI functions:
 
 ```bash
 cd parallel_tests && cargo mpirun -n $NPROCS parallel_tests
 ```
+
+These also act as examples for usage of the library.
 
 ## References
 [1] Sundar, Hari, Rahul S. Sampath, and George Biros. "Bottom-up construction and 2: 1 balance refinement of linear octrees in parallel." SIAM Journal on Scientific Computing 30.5 (2008): 2675-2708.

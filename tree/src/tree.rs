@@ -523,14 +523,13 @@ pub fn split_blocks(local_leaves: &mut Leaves, depth: &u64, ncrit: &usize) -> Ha
 /// Perform parallelised sample sort on a distributed set of **Leaves** (parallel).
 pub fn sample_sort(
     mut points: &mut Points,
-    ncrit: &usize,
     received_leaves: &mut Leaves,
     received_points: &mut Points,
     size: Rank,
     rank: Rank,
     world: SystemCommunicator,
 ) {
-    let local_leaves = keys_to_leaves(&mut points, ncrit);
+    let local_leaves = keys_to_leaves(&mut points);
 
     let mut received_samples = vec![Leaf::default(); K * (size as usize)];
     let nleaves = local_leaves.len();
@@ -645,7 +644,6 @@ pub fn unbalanced_tree(
     // 2. Perform parallel Morton sort over points
     sample_sort(
         &mut points,
-        &ncrit,
         &mut sorted_leaves,
         &mut sorted_points,
         size,
@@ -750,6 +748,7 @@ mod tests {
         assert_eq!(unique[0].npoints, 36)
     }
 
+    #[test]
     fn test_linearise() {
         let key = Key(0, 0, 0, 1);
         let depth = 2;
