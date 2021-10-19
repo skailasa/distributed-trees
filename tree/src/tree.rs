@@ -43,7 +43,8 @@ unsafe impl Equivalence for Weight {
     }
 }
 
-/// Adapted from algorithm 3 in [1]. Construct a minimal octree between two octants.
+/// Adapted from algorithm 3 in [1]. Construct a minimal octree between two octants, excluding the
+/// two octants (sequential).
 pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
     let ancestors_a: HashSet<Key> = find_ancestors(a, depth).into_iter().collect();
     let ancestors_b: HashSet<Key> = find_ancestors(b, depth).into_iter().collect();
@@ -80,7 +81,7 @@ pub fn complete_region(a: &Key, b: &Key, depth: &u64) -> Keys {
     minimal_tree
 }
 
-/// Make **Leaves** unique, check that they don't exceed 'ncrit' points per leaf.
+/// Make **Leaves** unique, check that they don't exceed 'ncrit' points per leaf (sequential).
 pub fn unique_leaves(mut leaves: Leaves, ncrit: &usize, sorted: bool) -> Leaves {
     // Container for result
     let mut unique: Leaves = Vec::new();
@@ -95,7 +96,6 @@ pub fn unique_leaves(mut leaves: Leaves, ncrit: &usize, sorted: bool) -> Leaves 
     let mut curr = leaves[curr_idx].clone();
     unique.push(curr);
 
-    // println!("HERE {:?}", leaves);
     for &leaf in leaves.iter().skip(1) {
         if curr != leaf {
             unique.push(curr);
@@ -114,14 +114,16 @@ pub fn unique_leaves(mut leaves: Leaves, ncrit: &usize, sorted: bool) -> Leaves 
 }
 
 /// Find coarsest **Seeds** at each processor. These are used to seed the construction of a minimal
-/// block octree in Algorithm 4 of [1].
+/// block octree in Algorithm 4 of [1] (sequential).
 pub fn find_seeds(local_leaves: &[Leaf], depth: &u64) -> Keys {
     // Find least and greatest leaves on processor
     let min: Key = local_leaves.iter().min().unwrap().key;
     let max: Key = local_leaves.iter().max().unwrap().key;
 
     // Complete region between least and greatest leaves
-    let complete = complete_region(&min, &max, depth);
+    let mut complete = complete_region(&min, &max, depth);
+    complete.push(min);
+    complete.push(max);
 
     // Find blocks
     let levels: Vec<u64> = complete.iter().map(|k| k.3).collect();
@@ -134,26 +136,27 @@ pub fn find_seeds(local_leaves: &[Leaf], depth: &u64) -> Keys {
         }
     }
 
-    let seed_idxs: Vec<usize> = complete
-        .iter()
-        .enumerate()
-        .filter(|&(_, &value)| value.3 == coarsest_level)
-        .map(|(index, _)| index)
-        .collect();
+    let mut seed_idxs: Vec<usize> = Vec::new();
 
-    let seeds: Keys = seed_idxs.iter().map(|&i| complete[i]).collect();
+    for (i, node) in complete.iter().enumerate() {
+        if node.3 == coarsest_level {
+            seed_idxs.push(i);
+        }
+    };
+
+    let seeds: Keys = seed_idxs.iter().map(|&i| complete[i as usize]).collect();
 
     seeds
 }
 
 /// Transfer leaves based on **Seeds**. After distributed coarse block octree is found, leaves
 /// smaller than the minimum **Seed** on  a given processor must be handed to its partner from
-/// algorithm 4 of [1].
+/// algorithm 4 of [1] (parallel).
 pub fn transfer_leaves_to_coarse_blocktree(
     points: &[Point],
     local_leaves: &[Leaf],
-    mut received_points: &mut Points,
-    mut received_leaves: &mut Leaves,
+    received_points: &mut Points,
+    received_leaves: &mut Leaves,
     seeds: &[Key],
     rank: Rank,
     world: SystemCommunicator,
@@ -217,11 +220,9 @@ pub fn transfer_leaves_to_coarse_blocktree(
     received_leaves.sort();
 }
 
-/// Remove overlaps from a list of octants, algorithm 7 in [1].
-pub fn linearise(keys: &mut Keys, depth: &u64, sorted: bool) -> Keys {
-    if !sorted {
-        keys.sort();
-    }
+/// Remove overlaps from a list of octants, algorithm 7 in [1], expects input keys to be sorted
+/// (sequential).
+pub fn linearise(keys: &mut Keys, depth: &u64) -> Keys {
 
     let mut linearised: Keys = Vec::new();
     for i in 0..(keys.len() - 1) {
@@ -235,7 +236,7 @@ pub fn linearise(keys: &mut Keys, depth: &u64, sorted: bool) -> Keys {
     linearised
 }
 
-/// Complete a distributed blocktree from the seed octants, algorithm 4 in [1].
+/// Complete a distributed blocktree from the seed octants, algorithm 4 in [1] (parallel).
 pub fn complete_blocktree(
     seeds: &mut Keys,
     depth: &u64,
@@ -295,7 +296,7 @@ pub fn complete_blocktree(
     local_blocktree
 }
 
-/// Associate a given set of **Blocks** with a given set of **Leaves**.
+/// Associate a given set of **Blocks** with a given set of **Leaves** (sequential).
 pub fn assign_blocks_to_leaves(local_leaves: &mut Leaves, local_blocktree: &[Key], depth: &u64) {
     let local_blocktree_set: HashSet<Key> = local_blocktree.iter().cloned().collect();
 
@@ -313,7 +314,7 @@ pub fn assign_blocks_to_leaves(local_leaves: &mut Leaves, local_blocktree: &[Key
     }
 }
 
-/// Find the **Weights** of a given set of **Blocks**.
+/// Find the **Weights** of a given set of **Blocks** (sequential).
 pub fn find_block_weights(leaves: &[Leaf], blocktree: &[Key]) -> Weights {
     let mut weights: Weights = Vec::new();
 
@@ -324,7 +325,7 @@ pub fn find_block_weights(leaves: &[Leaf], blocktree: &[Key]) -> Weights {
     weights
 }
 
-/// Transfer **Leaves** to correspond to the final load balanced blocktree.
+/// Transfer **Leaves** to correspond to the final load balanced blocktree (parallel).
 pub fn transfer_leaves_to_final_blocktree(
     sent_blocks: &[Key],
     mut local_leaves: Leaves,
@@ -370,7 +371,7 @@ pub fn transfer_leaves_to_final_blocktree(
 }
 
 /// Re-partition the blocks so that amount of computation on each node is balanced. Return mapping
-/// between block and rank to which it was sent.
+/// between block and rank to which it was sent (parallel).
 pub fn block_partition(
     weights: Weights,
     local_blocktree: &mut Keys,
@@ -480,10 +481,10 @@ pub fn block_partition(
     q
 }
 
-/// Split **Blocks** to satisfy a maximum of NCRIT particles per node in the final octree.
+/// Split **Blocks** to satisfy a maximum of NCRIT particles per node in the final octree
+/// (sequential).
 pub fn split_blocks(
-    mut local_blocktree: &mut Keys,
-    mut local_leaves: &mut Leaves,
+    local_leaves: &mut Leaves,
     depth: &u64,
     ncrit: &usize,
 ) -> HashMap<Key, Leaves> {
@@ -521,11 +522,10 @@ pub fn split_blocks(
             break;
         }
     }
-
     blocks
 }
 
-/// Perform parallelised sample sort on a distributed set of **Leaves**.
+/// Perform parallelised sample sort on a distributed set of **Leaves** (parallel).
 pub fn sample_sort(
     mut points: &mut Points,
     ncrit: &usize,
@@ -554,6 +554,7 @@ pub fn sample_sort(
 
     // Ignore first K samples to ensure (nproc-1) splitters
     received_samples.sort();
+
     received_samples = received_samples[K..].to_vec();
 
     // Every K'th sample defines a bucket.
@@ -694,7 +695,7 @@ pub fn unbalanced_tree(
     assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, depth);
 
     // 6. Split blocks into adaptive tree, and pass into Octree structure.
-    let nodes = split_blocks(&mut local_blocktree, &mut local_leaves, depth, ncrit);
+    let nodes = split_blocks(&mut local_leaves, depth, ncrit);
 
     nodes
 }
@@ -702,7 +703,31 @@ pub fn unbalanced_tree(
 mod tests {
     use super::*;
 
-    use crate::morton::{Point, MAX_POINTS};
+    use crate::morton::{Point, MAX_POINTS, find_siblings, find_finest_common_ancestor};
+    use crate::data::random;
+
+    #[test]
+    fn test_complete_region() {
+        let a = Key(0, 0, 0, 2);
+        let b = Key(3, 3, 3, 2);
+        let depth = 2;
+        let mut result = complete_region(&a, &b, &depth);
+        let fca = find_finest_common_ancestor(&a, &b, &depth);
+
+        let min = result.iter().min().unwrap();
+        let max = result.iter().max().unwrap();
+
+        // Test that bounds are satisfied
+        assert!(a <= *min);
+        assert!(b >= *max);
+
+        // Test that FCA is an ancestor of all nodes in the result
+        for node in result.iter() {
+            let ancestors = find_ancestors(&node, &depth);
+            assert!(ancestors.contains(&fca));
+        }
+    }
+
 
     #[test]
     fn test_unique() {
@@ -728,7 +753,20 @@ mod tests {
 
         let unique = unique_leaves(leaves, &ncrit, true);
 
-        println!("HERE: {:?}", unique);
         assert_eq!(unique[0].npoints, 36)
     }
+
+    fn test_linearise() {
+
+        let key = Key(0, 0, 0, 1);
+        let depth = 2;
+        let mut children = find_children(&key, &depth);
+        children.insert(0, key);
+
+        let linearised = linearise(&mut children, &depth);
+
+        assert!(!linearised.contains(&key));
+
+    }
+
 }

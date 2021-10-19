@@ -52,20 +52,33 @@ We use Katex for parsing Latex from doc strings, to build:
 ```bash
 RUSTDOCFLAGS="--html-in-header /abs/path/to/docs-header.html" cargo doc
 ```
-# Run
+
+## Settings
+Set tree parameters in `.env` file
 
 ```bash
+# .env file
 export NPROCS=4 # Number of MPI processes
 export DEPTH=3 # Maximum depth of octree
 export NPOINTS=100000 # Number of points to distribute randomly (for testing)
+```
 
-mpirun -n $NPROCS /path/to/tree
+```bash
+source .env # Source before using library.
 ```
 
 # Test
 
+Run serial tests for sequential functions in tree library:
+
 ```bash
-cargo test
+cd tree && cargo test
+```
+
+Run parallel (integration) tests for public API:
+
+```bash
+cd parallel_tests && cargo mpirun -n $NPROCS parallel_tests
 ```
 
 ## References
