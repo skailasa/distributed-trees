@@ -443,7 +443,7 @@ pub fn encode_points(points: &mut [Point], level: &u64, depth: &u64, x0: &Point,
         .collect()
 }
 
-/// Find all ancestors of a **Morton Key**.
+/// Find all ancestors of a **Morton Key**, excludes the key.
 pub fn find_ancestors(key: &Key, depth: &u64) -> Keys {
     let root = Key(0, 0, 0, 0);
     let mut parent = find_parent(key, depth);
@@ -462,6 +462,7 @@ pub fn find_finest_common_ancestor(a: &Key, b: &Key, depth: &u64) -> Key {
     let ancestors_b: HashSet<Key> = find_ancestors(b, depth).into_iter().collect();
 
     let intersection: HashSet<Key> = ancestors_a.intersection(&ancestors_b).copied().collect();
+
     intersection.into_iter().max().unwrap()
 }
 
@@ -493,27 +494,8 @@ pub fn find_deepest_last_descendent(key: &Key, depth: &u64) -> Key {
     }
 }
 
-/// Find all descendants of a **Morton Key** at the deepest level.
-pub fn find_descendants(key: &Key, depth: &u64) -> Keys {
-    let mut descendants: Keys = vec![*key];
-    let mut level_diff = depth - key.3;
-
-    while level_diff > 0 {
-        let mut aux: Keys = Vec::new();
-
-        for d in descendants {
-            let mut children = find_children(&d, depth);
-            aux.append(&mut children);
-        }
-
-        descendants = aux;
-        level_diff -= 1;
-    }
-    descendants
-}
-
 /// Convert a vector of **Points**, to a Vector of **Leaves**.
-pub fn keys_to_leaves(mut points: &mut [Point], ncrit: &usize) -> Leaves {
+pub fn keys_to_leaves(points: &mut [Point]) -> Leaves {
     // Sort points by Leaf key
     points.sort_by(|a, b| a.key.cmp(&b.key));
 
@@ -674,6 +656,26 @@ mod tests {
     }
 
     #[test]
+    fn test_encode_point() {
+        let depth = 2;
+        let x0 = Point {
+            x: 0.5,
+            y: 0.5,
+            z: 0.5,
+            global_idx: 0,
+            key: Key::default(),
+        };
+        let r0 = 0.5;
+        let mut point = Point::default();
+        point.x = 0.0;
+        point.y = 0.0;
+        point.z = 0.0;
+        encode_point(&mut point, &depth, &depth, &x0, &r0);
+        let expected = Key(0, 0, 0, 2);
+        assert_eq!(point.key, expected);
+    }
+
+    #[test]
     fn test_find_ancestors() {
         let key = Key(0, 0, 0, 2);
         let depth = 3;
@@ -697,6 +699,34 @@ mod tests {
     }
 
     #[test]
+    fn test_find_dld() {
+        let key = Key(0, 0, 0, 0);
+        let depth = 2;
+        let result = find_deepest_last_descendent(&key, &depth);
+        let expected = Key(3, 3, 3, 2);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_find_dfd() {
+        let key = Key(1, 1, 1, 1);
+        let depth = 2;
+        let result = find_deepest_first_descendent(&key, &depth);
+        let expected = Key(1, 1, 1, 2);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_find_finest_common_ancestor() {
+        let a = Key(3, 3, 3, 2);
+        let b = Key(0, 0, 0, 2);
+        let depth = 2;
+        let expected = Key(0, 0, 0, 0);
+        let result = find_finest_common_ancestor(&a, &b, &depth);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn test_keys_to_leaves() {
         let npoints = 342;
         let ncrit = 50;
@@ -713,7 +743,7 @@ mod tests {
         let r0 = 0.5;
         encode_points(&mut points, &level, &depth, &x0, &r0);
         let unique_keys: Keys = points.iter().map(|p| p.key).unique().clone().collect();
-        let leaves = keys_to_leaves(&mut points, &ncrit);
+        let leaves = keys_to_leaves(&mut points);
 
         // Test that no keys are dropped
         assert_eq!(unique_keys.len(), leaves.len());

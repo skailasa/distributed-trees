@@ -52,21 +52,36 @@ We use Katex for parsing Latex from doc strings, to build:
 ```bash
 RUSTDOCFLAGS="--html-in-header /abs/path/to/docs-header.html" cargo doc
 ```
-# Run
+
+## Settings
+Set tree parameters in `.env` file
 
 ```bash
+# .env file
 export NPROCS=4 # Number of MPI processes
 export DEPTH=3 # Maximum depth of octree
 export NPOINTS=100000 # Number of points to distribute randomly (for testing)
+```
 
-mpirun -n $NPROCS /path/to/tree
+```bash
+source .env # Source before using library.
 ```
 
 # Test
 
+Run serial tests for sequential functions in tree library:
+
 ```bash
-cargo test
+cd tree && cargo test
 ```
+
+Run tests for public MPI functions:
+
+```bash
+cd parallel_tests && cargo mpirun -n $NPROCS parallel_tests
+```
+
+These also act as examples for usage of the library.
 
 ## References
 [1] Sundar, Hari, Rahul S. Sampath, and George Biros. "Bottom-up construction and 2: 1 balance refinement of linear octrees in parallel." SIAM Journal on Scientific Computing 30.5 (2008): 2675-2708.
