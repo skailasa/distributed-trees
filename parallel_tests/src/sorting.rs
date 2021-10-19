@@ -17,7 +17,6 @@ pub fn test_sample_sort(universe: Universe) {
 
     let depth: u64 = 3;
     let npoints: u64 = 10000;
-    let ncrit: usize = 150;
 
     // Generate random test points on a given process.
     let mut points = random(npoints);
@@ -47,7 +46,6 @@ pub fn test_sample_sort(universe: Universe) {
     // 2. Perform parallel Morton sort over points
     sample_sort(
         &mut points,
-        &ncrit,
         &mut sorted_leaves,
         &mut sorted_points,
         size,
