@@ -625,7 +625,7 @@ pub fn sample_sort(
 pub fn unbalanced_tree(
     depth: &u64,
     ncrit: &usize,
-    universe: Universe,
+    universe: &Universe,
     mut points: &mut Points,
     x0: Point,
     r0: f64,
