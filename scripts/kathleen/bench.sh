@@ -7,13 +7,13 @@
 #$ -l mem=2G
 
 # Set name
-#$ -N MPI Test
+#$ -N MPI-Test-2
 
 # Request cores
-# -pe mpi 80
+#$ -pe mpi 80
 
 # Set working directory
-#$ -wd /home/ucapska/Scratch/output
+#$ -wd /home/ucapska/Scratch
 
 # Run the job
 gerun $HOME/distributed-trees/tree/target/release/tree
