@@ -16,4 +16,4 @@
 #$ -wd /home/ucapska/Scratch/output
 
 # Run the job
-gerun $HOME/src/distributed-trees/build/release/tree
+gerun $HOME/distributed-trees/tree/target/release/tree
