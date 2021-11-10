@@ -10,7 +10,7 @@ edition = "2018"
 itertools = "0.10.1"
 rand = "0.8.4"
 rayon = "1.5.1"
-mpi = { git = "https://github.com/rsmpi/rsmpi"}
+mpi = { git = "https://github.com/skailasa/rsmpi"}
 memoffset = "0.6"
 
 [package.metadata.docs.rs]
