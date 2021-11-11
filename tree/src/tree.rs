@@ -3,11 +3,11 @@ use std::collections::{HashMap, HashSet};
 use memoffset::offset_of;
 use mpi::{
     collective::SystemOperation,
-    datatype::{Equivalence, Partition, PartitionMut, UncommittedUserDatatype, UserDatatype},
+    datatype::{Equivalence, UncommittedUserDatatype, UserDatatype, Partition, PartitionMut},
     environment::Universe,
     topology::{Rank, SystemCommunicator},
     traits::*,
-    Address, Count,
+    Address, Count
 };
 use rand::{thread_rng, Rng};
 
@@ -231,7 +231,6 @@ pub fn transfer_leaves_to_coarse_blocktree(
     received_leaves.sort();
 }
 
-
 /// Remove overlaps from a list of octants, algorithm 7 in [1], expects input keys to be sorted
 /// (sequential).
 pub fn linearise(keys: &mut Keys, depth: &u64) -> Keys {
@@ -310,7 +309,6 @@ pub fn complete_blocktree(
     local_blocktree.sort();
     local_blocktree
 }
-
 
 /// Associate a given set of **Blocks** with a given set of **Leaves** (sequential).
 pub fn assign_blocks_to_leaves(local_leaves: &mut Leaves, local_blocktree: &[Key], depth: &u64) {
@@ -668,6 +666,7 @@ where T: Default+Clone+Equivalence
 }
 
 
+
 /// Generate a distributed unbalanced tree from a set of distributed points.
 pub fn unbalanced_tree(
     depth: &u64,
@@ -676,7 +675,7 @@ pub fn unbalanced_tree(
     mut points: &mut Points,
     x0: Point,
     r0: f64,
-) -> Tree {
+) -> Tree{
     let world = universe.world();
     let rank = world.rank();
     let size = world.size();
@@ -684,12 +683,12 @@ pub fn unbalanced_tree(
     // 1. Encode points to leaf keys inplace.
     encode_points(&mut points, &depth, &depth, &x0, &r0);
 
-    // Temporary buffer for receiving partner keys
-    // let mut sorted_leaves: Leaves = Vec::new();
-    // let mut sorted_points: Points = Vec::new();
-
     // 2. Perform parallel Morton sort over points
-    let (mut sorted_leaves, mut sorted_points) = sample_sort(&mut points, size, world);
+    let (mut sorted_leaves, mut sorted_points) = sample_sort(
+        &mut points,
+        size,
+        world,
+    );
 
     let points = sorted_points;
     let local_leaves = sorted_leaves;
@@ -724,10 +723,10 @@ pub fn unbalanced_tree(
     // 5. Complete minimal block-tree across processes
     let mut local_blocktree = complete_blocktree(&mut seeds, depth, rank, size, world);
 
-    // // Associate leaves with blocks
+    // Associate leaves with blocks
     assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, depth);
 
-    // // 6. Split blocks into adaptive tree, and pass into Octree structure.
+    // 6. Split blocks into adaptive tree, and pass into Octree structure.
     let nodes = split_blocks(&mut local_leaves, depth, ncrit);
 
     nodes

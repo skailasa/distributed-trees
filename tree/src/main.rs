@@ -32,26 +32,22 @@ fn main() {
     // 1. Generate distributed unbalanced tree from a set of distributed points
     let unbalanced = unbalanced_tree(&depth, &ncrit, &universe, &mut points, x0, r0);
     let runtime = start.elapsed().as_millis();
-
     // 2. Balance the distributed tree
 
     // 3. Perform load balance based on interaction list density.
 
     // 4. Form locally essential Octree
 
-    // Print runtime to stdout
-    // broadcast total number of leaves into root rank
-
-    let nleaves = unbalanced.len() as u32;
-    // let nleaves = 1;
-
-    let mut sum = 0;
     let world = universe.world();
     let size = world.size();
     let rank = world.rank();
     let root_rank = 0;
     world.barrier();
 
+    // broadcast total number of leaves into root rank
+    let nleaves = unbalanced.len() as u32;
+    // let nleaves = 1;
+    let mut sum = 0;
 
     // Print runtime to stdout
     if rank == root_rank {
@@ -67,4 +63,5 @@ fn main() {
             .process_at_rank(root_rank)
             .reduce_into(&nleaves, SystemOperation::sum())
     }
+
 }
