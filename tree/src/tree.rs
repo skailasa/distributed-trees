@@ -169,7 +169,8 @@ pub fn transfer_leaves_to_coarse_blocktree(
         min_seed = *seeds.iter().min().unwrap();
     }
 
-    let prev_rank = rank - 1;
+    let prev_rank = if rank > 0 { rank - 1 } else {size-1};
+    let next_rank = if rank +1 < size { rank + 1 } else { 0 };
 
     if rank > 0 {
         let msg: Leaves = local_leaves
@@ -178,12 +179,17 @@ pub fn transfer_leaves_to_coarse_blocktree(
             .cloned()
             .collect();
 
+        let msg_size: u32 = msg.len() as u32;
+        world.process_at_rank(prev_rank).send(&msg_size);
         world.process_at_rank(prev_rank).send(&msg[..]);
     }
 
     if rank < (size - 1) {
-        let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
-        received_leaves.append(&mut rec);
+        let mut bufsize = 0;
+        world.process_at_rank(next_rank).receive_into(&mut bufsize);
+        let mut buffer = vec![Leaf::default(); bufsize as usize];
+        world.process_at_rank(next_rank).receive_into(&mut buffer[..]);
+        received_leaves.append(&mut buffer);
     }
 
     if rank > 0 {
@@ -193,12 +199,17 @@ pub fn transfer_leaves_to_coarse_blocktree(
             .cloned()
             .collect();
 
+        let msg_size: u32 = msg.len() as u32;
+        world.process_at_rank(prev_rank).send(&msg_size);
         world.process_at_rank(prev_rank).send(&msg[..]);
     }
 
     if rank < (size - 1) {
-        let (mut rec, _) = world.any_process().receive_vec::<Point>();
-        received_points.append(&mut rec);
+        let mut bufsize = 0;
+        world.process_at_rank(next_rank).receive_into(&mut bufsize);
+        let mut buffer = vec![Point::default(); bufsize as usize];
+        world.process_at_rank(next_rank).receive_into(&mut buffer[..]);
+        received_points.append(&mut buffer);
     }
 
     let mut local_leaves: Leaves = local_leaves
@@ -219,6 +230,7 @@ pub fn transfer_leaves_to_coarse_blocktree(
     // Re Sort received leaves
     received_leaves.sort();
 }
+
 
 /// Remove overlaps from a list of octants, algorithm 7 in [1], expects input keys to be sorted
 /// (sequential).
@@ -264,15 +276,19 @@ pub fn complete_blocktree(
         seeds.push(last_child);
     }
 
+    let next_rank = if rank + 1 < size { rank + 1 } else { 0 };
+    let previous_rank = if rank > 0 { rank - 1 } else { size - 1 };
+
     // Send required data to partner process.
     if rank > 0 {
         let min = *seeds.iter().min().unwrap();
-        world.process_at_rank(rank - 1).send(&min);
+        world.process_at_rank(previous_rank).send(&min);
     }
 
     if rank < (size - 1) {
-        let rec = world.any_process().receive::<Key>();
-        seeds.push(rec.0);
+        let mut rec = Key::default();
+        world.process_at_rank(next_rank).receive_into(&mut rec);
+        seeds.push(rec);
     }
 
     // Complete region between seeds at each process
@@ -294,6 +310,7 @@ pub fn complete_blocktree(
     local_blocktree.sort();
     local_blocktree
 }
+
 
 /// Associate a given set of **Blocks** with a given set of **Leaves** (sequential).
 pub fn assign_blocks_to_leaves(local_leaves: &mut Leaves, local_blocktree: &[Key], depth: &u64) {
@@ -655,7 +672,7 @@ where T: Default+Clone+Equivalence
 pub fn unbalanced_tree(
     depth: &u64,
     ncrit: &usize,
-    universe: Universe,
+    universe: &Universe,
     mut points: &mut Points,
     x0: Point,
     r0: f64,
@@ -673,13 +690,6 @@ pub fn unbalanced_tree(
 
     // 2. Perform parallel Morton sort over points
     let (mut sorted_leaves, mut sorted_points) = sample_sort(&mut points, size, world);
-
-    println!(
-        "RANK: {:?} MIN {:?} MAX {:?}",
-        rank,
-        sorted_leaves.iter().min(),
-        sorted_leaves.iter().max()
-    );
 
     let points = sorted_points;
     let local_leaves = sorted_leaves;
@@ -714,10 +724,10 @@ pub fn unbalanced_tree(
     // 5. Complete minimal block-tree across processes
     let mut local_blocktree = complete_blocktree(&mut seeds, depth, rank, size, world);
 
-    // Associate leaves with blocks
+    // // Associate leaves with blocks
     assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, depth);
 
-    // 6. Split blocks into adaptive tree, and pass into Octree structure.
+    // // 6. Split blocks into adaptive tree, and pass into Octree structure.
     let nodes = split_blocks(&mut local_leaves, depth, ncrit);
 
     nodes

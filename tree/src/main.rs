@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use mpi::traits::*;
+use mpi::collective::{SystemOperation};
 
 use tree::data::random;
 
@@ -29,7 +30,8 @@ fn main() {
     let start = Instant::now();
 
     // 1. Generate distributed unbalanced tree from a set of distributed points
-    let unbalanced = unbalanced_tree(&depth, &ncrit, universe, &mut points, x0, r0);
+    let unbalanced = unbalanced_tree(&depth, &ncrit, &universe, &mut points, x0, r0);
+    let runtime = start.elapsed().as_millis();
 
     // 2. Balance the distributed tree
 
@@ -38,5 +40,31 @@ fn main() {
     // 4. Form locally essential Octree
 
     // Print runtime to stdout
-    println!("RUNTIME: {:?} ms", start.elapsed().as_millis());
+    // broadcast total number of leaves into root rank
+
+    let nleaves = unbalanced.len() as u32;
+    // let nleaves = 1;
+
+    let mut sum = 0;
+    let world = universe.world();
+    let size = world.size();
+    let rank = world.rank();
+    let root_rank = 0;
+    world.barrier();
+
+
+    // Print runtime to stdout
+    if rank == root_rank {
+        world
+            .process_at_rank(root_rank)
+            .reduce_into_root(&nleaves, &mut sum, SystemOperation::sum());
+        println!("RUNTIME: {:?} ms", runtime);
+        println!("TOTAL LEAVES: {:?}", sum);
+        println!("WORLD SIZE: {:?}", size);
+
+    } else {
+        world
+            .process_at_rank(root_rank)
+            .reduce_into(&nleaves, SystemOperation::sum())
+    }
 }
