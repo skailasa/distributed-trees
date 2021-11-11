@@ -10,9 +10,13 @@ use tree::tree::unbalanced_tree;
 
 fn main() {
     // 0. Experimental Parameters
-    let depth: u64 = std::env::var("DEPTH").unwrap().parse().unwrap_or(3);
-    let npoints: u64 = std::env::var("NPOINTS").unwrap().parse().unwrap_or(1000);
-    let ncrit: usize = std::env::var("NCRIT").unwrap().parse().unwrap_or(1000);
+    // let depth: u64 = std::env::var("DEPTH").unwrap().parse().unwrap_or(3);
+    // let npoints: u64 = std::env::var("NPOINTS").unwrap().parse().unwrap_or(1000);
+    // let ncrit: usize = std::env::var("NCRIT").unwrap().parse().unwrap_or(1000);
+
+    let depth: u64 = 10;
+    let npoints: u64 = 1000000;
+    let ncrit: usize = 100;
 
     // Generate random test points on a given process.
     let mut points = random(npoints);
@@ -39,27 +43,29 @@ fn main() {
     // 4. Form locally essential Octree
 
     let world = universe.world();
+    let size = world.size();
     let rank = world.rank();
     let root_rank = 0;
     world.barrier();
 
     // broadcast total number of leaves into root rank
     let nleaves = unbalanced.len() as u32;
+    // let nleaves = 1;
+    let mut sum = 0;
 
     // Print runtime to stdout
     if rank == root_rank {
-
-        let mut sum = 0;
-
         world
             .process_at_rank(root_rank)
             .reduce_into_root(&nleaves, &mut sum, SystemOperation::sum());
+        println!("RUNTIME: {:?} ms", runtime);
+        println!("TOTAL LEAVES: {:?}", sum);
+        println!("WORLD SIZE: {:?}", size);
 
-            println!("RUNTIME: {:?} ms", runtime);
-            println!("TOTAL LEAVES: {:?}", sum);
     } else {
         world
             .process_at_rank(root_rank)
             .reduce_into(&nleaves, SystemOperation::sum())
     }
+
 }

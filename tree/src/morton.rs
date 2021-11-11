@@ -438,7 +438,7 @@ pub fn encode_point(mut point: &mut Point, &level: &u64, &depth: &u64, &x0: &Poi
 /// in parallel.
 pub fn encode_points(points: &mut [Point], level: &u64, depth: &u64, x0: &Point, r0: &f64) {
     points
-        .par_iter_mut()
+        .iter_mut()
         .map(|p| encode_point(p, level, depth, x0, r0))
         .collect()
 }
