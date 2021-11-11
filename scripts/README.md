@@ -21,8 +21,24 @@
 module load llvm
 ```
 
-# 2) Archer2
+# 2) Archer 2
+
+## Build notes
+
+Work with AMD (aocc) C compiler
+
+* ``` module restore PrgEnv-aocc```
+
+Set PKG_CONFIG_PATH to point to the location of the mpich.pc file
+
+Find the location of the file in /opt
+
+* ```find /opt/cray/pe -name mpich.pc```
+
+Set the path to match the compiler, MPICH version and networking library (OFI/UCX)
+
+* ```export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/opt/cray/pe/mpich/8.0.16/ofi/gnu/9.1/lib/pkgconfig/```
 
 
-# 3) Isambard
+# 3) Isambard 2
 
