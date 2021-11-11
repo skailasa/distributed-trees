@@ -78,7 +78,7 @@ cd tree && cargo test
 Run tests for public MPI functions:
 
 ```bash
-cd parallel_tests && cargo mpirun -n $NPROCS parallel_tests
+cd parallel_tests && cargo mpirun --bin parallel_tests
 ```
 
 These also act as examples for usage of the library.

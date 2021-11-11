@@ -40,16 +40,11 @@ pub fn test_sample_sort(universe: Universe) {
     encode_points(&mut points, &depth, &depth, &x0, &r0);
 
     // Temporary buffer for receiving partner keys
-    let mut sorted_leaves: Leaves = Vec::new();
-    let mut sorted_points: Points = Vec::new();
 
     // 2. Perform parallel Morton sort over points
-    sample_sort(
+    let (sorted_leaves, sorted_points) = sample_sort(
         &mut points,
-        &mut sorted_leaves,
-        &mut sorted_points,
         size,
-        rank,
         world,
     );
 

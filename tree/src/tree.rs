@@ -3,11 +3,11 @@ use std::collections::{HashMap, HashSet};
 use memoffset::offset_of;
 use mpi::{
     collective::SystemOperation,
-    datatype::{Equivalence, UncommittedUserDatatype, UserDatatype},
+    datatype::{Equivalence, Partition, PartitionMut, UncommittedUserDatatype, UserDatatype},
     environment::Universe,
     topology::{Rank, SystemCommunicator},
     traits::*,
-    Address,
+    Address, Count,
 };
 use rand::{thread_rng, Rng};
 
@@ -523,12 +523,10 @@ pub fn split_blocks(local_leaves: &mut Leaves, depth: &u64, ncrit: &usize) -> Ha
 /// Perform parallelised sample sort on a distributed set of **Leaves** (parallel).
 pub fn sample_sort(
     mut points: &mut Points,
-    received_leaves: &mut Leaves,
-    received_points: &mut Points,
     size: Rank,
-    rank: Rank,
     world: SystemCommunicator,
-) {
+) -> (Leaves, Points)
+{
     let local_leaves = keys_to_leaves(&mut points);
 
     let mut received_samples = vec![Leaf::default(); K * (size as usize)];
@@ -556,7 +554,8 @@ pub fn sample_sort(
     let nsplitters = splitters.len();
 
     // 2. Sort local leaves into buckets
-    let mut buckets: Vec<Leaves> = vec![Vec::new(); size as usize];
+    let mut buckets_leaves: Vec<Leaves> = vec![Vec::new(); size as usize];
+
     // Sort local points into corresponding buckets
     let mut buckets_points: Vec<Points> = vec![Vec::new(); size as usize];
 
@@ -565,11 +564,11 @@ pub fn sample_sort(
             if i < nsplitters {
                 let s = &splitters[i];
                 if leaf < s {
-                    buckets[i].push(leaf.clone());
+                    buckets_leaves[i].push(leaf.clone());
                     break;
                 }
             } else {
-                buckets[i].push(leaf.clone())
+                buckets_leaves[i].push(leaf.clone())
             }
         }
     }
@@ -589,37 +588,68 @@ pub fn sample_sort(
     }
 
     // 3. Send all local buckets to their matching processor.
-    for r in 0..size {
-        if rank != r {
-            // let sent_leaves = &buckets[r as usize];
-            let sent = &buckets_points[r as usize];
-            world.process_at_rank(r).send(&sent[..]);
-        } else {
-            for _ in 1..world.size() {
-                // let (mut rec_leaves, _) = world.any_process().receive_vec::<Leaf>();
-                let (mut rec, _) = world.any_process().receive_vec::<Point>();
-                received_points.append(&mut rec);
-            }
-        }
-        world.barrier();
-    }
-    for r in 0..size {
-        if rank != r {
-            let sent = &buckets[r as usize];
-            world.process_at_rank(r).send(&sent[..]);
-        } else {
-            for _ in 1..world.size() {
-                let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
-                received_leaves.append(&mut rec);
-            }
-        }
-        world.barrier();
-    }
+
+    let mut received_leaves = all_to_all(world, size, buckets_leaves);
+    let received_points = all_to_all(world, size, buckets_points);
+
     // 4. Sort leaves on matching processors.
-    received_leaves.append(&mut buckets[rank as usize]);
-    received_points.append(&mut buckets_points[rank as usize]);
     received_leaves.sort();
+    (received_leaves, received_points)
 }
+
+fn all_to_all<T:>(
+    world: SystemCommunicator,
+    size: Rank,
+    buckets: Vec<Vec<T>>) -> Vec<T>
+where T: Default+Clone+Equivalence
+{
+
+    let mut counts_snd: Vec<Count> = vec![0; size as usize];
+
+    for (i, bucket) in buckets.iter().enumerate() {
+        counts_snd[i] = bucket.len() as Count;
+    }
+
+    // Flatten buckets, after bucketing
+    let buckets_flat: Vec<T> = buckets.into_iter().flatten().collect();
+
+    let displs_snd: Vec<Count> = counts_snd
+        .iter()
+        .scan(0, |acc, &x| {
+            let tmp = *acc;
+            *acc += x;
+            Some(tmp)
+        })
+        .collect();
+
+    // All to All for bucket sizes
+    let mut counts_recv: Vec<Count> = vec![0; size as usize];
+
+    world.all_to_all_into(&counts_snd[..], &mut counts_recv[..]);
+
+    // displacements
+    let displs_recv: Vec<Count> = counts_recv
+        .iter()
+        .scan(0, |acc, &x| {
+            let tmp = *acc;
+            *acc += x;
+            Some(tmp)
+        })
+        .collect();
+
+    // Allocate a buffer to receive relevant data from all processes.
+    let total: Count = counts_recv.iter().sum();
+    let mut received = vec![T::default(); total as usize];
+    let mut partition_receive = PartitionMut::new(&mut received[..], counts_recv, &displs_recv[..]);
+
+    // Allocate a partition of the data to send to each process
+    let partition_snd = Partition::new(&buckets_flat[..], counts_snd, &displs_snd[..]);
+
+    world.all_to_all_varcount_into(&partition_snd, &mut partition_receive);
+
+    received
+}
+
 
 /// Generate a distributed unbalanced tree from a set of distributed points.
 pub fn unbalanced_tree(
@@ -638,17 +668,17 @@ pub fn unbalanced_tree(
     encode_points(&mut points, &depth, &depth, &x0, &r0);
 
     // Temporary buffer for receiving partner keys
-    let mut sorted_leaves: Leaves = Vec::new();
-    let mut sorted_points: Points = Vec::new();
+    // let mut sorted_leaves: Leaves = Vec::new();
+    // let mut sorted_points: Points = Vec::new();
 
     // 2. Perform parallel Morton sort over points
-    sample_sort(
-        &mut points,
-        &mut sorted_leaves,
-        &mut sorted_points,
-        size,
+    let (mut sorted_leaves, mut sorted_points) = sample_sort(&mut points, size, world);
+
+    println!(
+        "RANK: {:?} MIN {:?} MAX {:?}",
         rank,
-        world,
+        sorted_leaves.iter().min(),
+        sorted_leaves.iter().max()
     );
 
     let points = sorted_points;
