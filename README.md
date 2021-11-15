@@ -43,7 +43,7 @@ We initially build an unbalanced tree from particle coordinate data distributed 
 ## Binary
 
 ```bash
-cargo build
+source .env && cd tree && cargo build
 ```
 
 ## Documentation
@@ -61,6 +61,8 @@ Set tree parameters in `.env` file
 export NPROCS=4 # Number of MPI processes
 export DEPTH=3 # Maximum depth of octree
 export NPOINTS=100000 # Number of points to distribute randomly (for testing)
+export NCRIT=100 # Maximum number of points per leaf node
+export CRAY=0 # '0' if not on cray system, '1' otherwise.
 ```
 
 ```bash
