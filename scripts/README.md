@@ -27,6 +27,7 @@ module load llvm
 
 ### Hardware
 
+5680 compute nodes each with a dual AMD EPYC Zen2 (Rome arch) 64 core processors at 2.2GHz clock speed. Total of 750,080 compute cores. 256GiB of memory per node, and 2 GiB per code. 16 AMD MI100 GPUs, though there aren't any more details on the site yet.
 
 ### Software
 
