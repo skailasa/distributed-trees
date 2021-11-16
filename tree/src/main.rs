@@ -54,14 +54,10 @@ fn main() {
         world
             .process_at_rank(root_rank)
             .reduce_into_root(&nleaves, &mut sum, SystemOperation::sum());
-        println!("RUNTIME: {:?} ms", runtime);
-        println!("TOTAL LEAVES: {:?}", sum);
-        println!("WORLD SIZE: {:?}", size);
-
+        println!("{:?}, {:?}, {:?}", size, sum, runtime)
     } else {
         world
             .process_at_rank(root_rank)
             .reduce_into(&nleaves, SystemOperation::sum())
     }
-
 }
