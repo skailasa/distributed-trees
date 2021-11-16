@@ -6,7 +6,7 @@
 #SBATCH --hint=nomultithread
 #SBATCH --distribution=block:block
 #SBATCH --time=00:30:00
-#SBATCH --nodes=16
+#SBATCH --nodes=1
 
 # Restore AMD compiler env
 # module restore PrgEnv-aocc
@@ -18,27 +18,25 @@ export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/opt/cray/pe/mpich/8.0.16/ofi/gnu/9.1/li
 export WORK=/work/e681/e681/skailasa
 
 # Define a scratch directory for the job
-export TEST=${WORK}/distributed-trees/weak
-export SCRATCH=${TEST}/${SLURM_JOBID}
+export TEST=${WORK}/distributed-trees/strong
+export SCRATCH=${TEST}/strong_${SLURM_JOBID}
 
 # Create a scratch directory for this run
 mkdir -p ${SCRATCH}
 cd ${SCRATCH}
 
 # Set simulation parameters
-n_tasks=(1 2 4 8 16 32 64 128 256 512 1024)
+n_tasks=(1 2 4 8 16 32)
 
 export NCRIT=150
-export NPOINTS=1000000
 export DEPTH=10
 
 # Create a CSV output file for analysis
-export OUTPUT=${SCRATCH}/weak_scaling_${SLURM_JOBID}.csv
+export OUTPUT=${SCRATCH}/strong_scaling_${SLURM_JOBID}.csv
 touch ${OUTPUT}
 echo "World Size, Total Leaves, Runtime" >> ${OUTPUT}
 
 # Run jobs
 for i in ${!n_tasks[@]}; do
-    srun --ntasks=${n_tasks[$i]} --ntasks-per-core=1 --nodes=16 ${TEST}/weak >> ${OUTPUT}
+    srun --ntasks=${n_tasks[$i]} --ntasks-per-core=1 --nodes=1 ${TEST}/strong >> ${OUTPUT}
 done
-
