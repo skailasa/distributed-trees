@@ -687,9 +687,9 @@ pub fn unbalanced_tree(
     let mut time: Times = HashMap::new();
 
     // 1. Encode points to leaf keys inplace.
-    let start  = Instant::now();
+    let sim_start  = Instant::now();
     encode_points(&mut points, &depth, &depth, &x0, &r0);
-    time.insert("encoding".to_string(), start.elapsed().as_millis());
+    time.insert("encoding".to_string(), sim_start.elapsed().as_millis());
 
     // 2. Perform parallel Morton sort over points
     let start = Instant::now();
@@ -748,6 +748,9 @@ pub fn unbalanced_tree(
     let start = Instant::now();
     let nodes = split_blocks(&mut local_leaves, depth, ncrit);
     time.insert("block_splitting".to_string(), start.elapsed().as_millis());
+
+    // Record simulation time
+    time.insert("total".to_string(), sim_start.elapsed().as_millis());
 
     (nodes, time)
 }

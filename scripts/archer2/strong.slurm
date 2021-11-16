@@ -34,7 +34,7 @@ export DEPTH=10
 # Create a CSV output file for analysis
 export OUTPUT=${SCRATCH}/strong_scaling_${SLURM_JOBID}.csv
 touch ${OUTPUT}
-echo "World Size, Total Leaves, Runtime" >> ${OUTPUT}
+echo "n_processes, n_leaves, runtime, encoding_time, sorting_time" >> ${OUTPUT}
 
 # Run jobs
 for i in ${!n_tasks[@]}; do
