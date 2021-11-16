@@ -47,6 +47,7 @@ fn main() {
         world
             .process_at_rank(root_rank)
             .reduce_into_root(&nleaves, &mut sum, SystemOperation::sum());
+        /// universe size, number of leaves, total runtime, encoding time, sorting time
         println!(
             "{:?}, {:?}, {:?}, {:?}, {:?}",
             size,
