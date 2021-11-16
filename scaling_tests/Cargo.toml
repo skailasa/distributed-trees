@@ -12,3 +12,7 @@ mpi = { git = "https://github.com/skailasa/rsmpi" }
 [[bin]]
 name = "weak"
 path = "src/weak/bin/main.rs"
+
+[[bin]]
+name = "strong"
+path = "src/strong/bin/main.rs"

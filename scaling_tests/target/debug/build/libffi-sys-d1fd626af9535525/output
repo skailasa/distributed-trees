@@ -1,0 +1,292 @@
+checking build system type... x86_64-pc-linux-gnu
+checking host system type... x86_64-pc-linux-gnu
+checking target system type... x86_64-pc-linux-gnu
+continue configure in default builddir "./x86_64-unknown-linux-gnu"
+....exec /bin/sh ../configure "--srcdir=.." "--enable-builddir=x86_64-unknown-linux-gnu" "linux
+gnu"
+checking build system type... x86_64-pc-linux-gnu
+checking host system type... x86_64-pc-linux-gnu
+checking target system type... x86_64-pc-linux-gnu
+checking for gsed... sed
+checking for a BSD-compatible install... /usr/bin/install -c
+checking whether build environment is sane... yes
+checking for a thread-safe mkdir -p... /usr/bin/mkdir -p
+checking for gawk... gawk
+checking whether make sets $(MAKE)... yes
+checking whether make supports nested variables... yes
+checking for gcc... gcc
+checking whether the C compiler works... yes
+checking for C compiler default output file name... a.out
+checking for suffix of executables... 
+checking whether we are cross compiling... no
+checking for suffix of object files... o
+checking whether we are using the GNU C compiler... yes
+checking whether gcc accepts -g... yes
+checking for gcc option to accept ISO C89... none needed
+checking whether gcc understands -c and -o together... yes
+checking whether make supports the include directive... yes (GNU style)
+checking dependency style of gcc... gcc3
+checking for g++... g++
+checking whether we are using the GNU C++ compiler... yes
+checking whether g++ accepts -g... yes
+checking dependency style of g++... gcc3
+checking dependency style of gcc... gcc3
+checking how to print strings... printf
+checking for a sed that does not truncate output... /usr/bin/sed
+checking for grep that handles long lines and -e... /usr/bin/grep
+checking for egrep... /usr/bin/grep -E
+checking for fgrep... /usr/bin/grep -F
+checking for ld used by gcc... /usr/x86_64-suse-linux/bin/ld
+checking if the linker (/usr/x86_64-suse-linux/bin/ld) is GNU ld... yes
+checking for BSD- or MS-compatible name lister (nm)... /usr/bin/nm -B
+checking the name lister (/usr/bin/nm -B) interface... BSD nm
+checking whether ln -s works... yes
+checking the maximum length of command line arguments... 1572864
+checking how to convert x86_64-pc-linux-gnu file names to x86_64-pc-linux-gnu format... func_convert_file_noop
+checking how to convert x86_64-pc-linux-gnu file names to toolchain format... func_convert_file_noop
+checking for /usr/x86_64-suse-linux/bin/ld option to reload object files... -r
+checking for objdump... objdump
+checking how to recognize dependent libraries... pass_all
+checking for dlltool... no
+checking how to associate runtime and link libraries... printf %s\n
+checking for ar... ar
+checking for archiver @FILE support... @
+checking for strip... strip
+checking for ranlib... ranlib
+checking command to parse /usr/bin/nm -B output from gcc object... ok
+checking for sysroot... no
+checking for a working dd... /usr/bin/dd
+checking how to truncate binary pipes... /usr/bin/dd bs=4096 count=1
+checking for mt... no
+checking if : is a manifest tool... no
+checking how to run the C preprocessor... gcc -E
+checking for ANSI C header files... yes
+checking for sys/types.h... yes
+checking for sys/stat.h... yes
+checking for stdlib.h... yes
+checking for string.h... yes
+checking for memory.h... yes
+checking for strings.h... yes
+checking for inttypes.h... yes
+checking for stdint.h... yes
+checking for unistd.h... yes
+checking for dlfcn.h... yes
+checking for objdir... .libs
+checking if gcc supports -fno-rtti -fno-exceptions... no
+checking for gcc option to produce PIC... -fPIC -DPIC
+checking if gcc PIC flag -fPIC -DPIC works... yes
+checking if gcc static flag -static works... yes
+checking if gcc supports -c -o file.o... yes
+checking if gcc supports -c -o file.o... (cached) yes
+checking whether the gcc linker (/usr/x86_64-suse-linux/bin/ld -m elf_x86_64) supports shared libraries... yes
+checking whether -lc should be explicitly linked in... no
+checking dynamic linker characteristics... GNU/Linux ld.so
+checking how to hardcode library paths into programs... immediate
+checking whether stripping libraries is possible... yes
+checking if libtool supports shared libraries... yes
+checking whether to build shared libraries... yes
+checking whether to build static libraries... yes
+checking how to run the C++ preprocessor... g++ -E
+checking for ld used by g++... /usr/x86_64-suse-linux/bin/ld -m elf_x86_64
+checking if the linker (/usr/x86_64-suse-linux/bin/ld -m elf_x86_64) is GNU ld... yes
+checking whether the g++ linker (/usr/x86_64-suse-linux/bin/ld -m elf_x86_64) supports shared libraries... yes
+checking for g++ option to produce PIC... -fPIC -DPIC
+checking if g++ PIC flag -fPIC -DPIC works... yes
+checking if g++ static flag -static works... yes
+checking if g++ supports -c -o file.o... yes
+checking if g++ supports -c -o file.o... (cached) yes
+checking whether the g++ linker (/usr/x86_64-suse-linux/bin/ld -m elf_x86_64) supports shared libraries... yes
+checking dynamic linker characteristics... (cached) GNU/Linux ld.so
+checking how to hardcode library paths into programs... immediate
+checking for readelf... readelf
+checking size of size_t... 8
+checking for C compiler vendor... gnu
+checking whether C compiler accepts -fstrict-aliasing... yes
+checking whether C compiler accepts -ffast-math... yes
+checking for gcc architecture flag... 
+checking for x86 cpuid 0 output... 10:68747541:444d4163:69746e65
+checking for x86 cpuid 1 output... 830f10:96800800:7ef8320b:178bfbff
+checking whether C compiler accepts -march=amdfam10... yes
+checking for gcc architecture flag... -march=amdfam10
+checking whether C compiler accepts  -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10... yes
+checking CFLAGS for maximum warnings... -Wall
+checking whether to enable maintainer-specific portions of Makefiles... no
+checking sys/memfd.h usability... no
+checking sys/memfd.h presence... no
+checking for sys/memfd.h... no
+checking for memfd_create... no
+checking sys/mman.h usability... yes
+checking sys/mman.h presence... yes
+checking for sys/mman.h... yes
+checking for mmap... yes
+checking for mkostemp... yes
+checking for mkstemp... yes
+checking for sys/mman.h... (cached) yes
+checking for mmap... (cached) yes
+checking whether read-only mmap of a plain file works... yes
+checking whether mmap from /dev/zero works... yes
+checking for MAP_ANON(YMOUS)... yes
+checking whether mmap with MAP_ANON(YMOUS) works... yes
+checking for ANSI C header files... (cached) yes
+checking for memcpy... yes
+checking for size_t... yes
+checking for working alloca.h... yes
+checking for alloca... yes
+checking size of double... 8
+checking size of long double... 16
+checking whether byte ordering is bigendian... no
+checking assembler .cfi pseudo-op support... yes
+checking assembler supports pc related relocs... yes
+checking whether compiler supports pointer authentication... no
+checking for _ prefix in compiled symbols... no
+checking toolchain supports unwind section type... yes
+checking whether C compiler accepts -fno-lto... yes
+checking whether .eh_frame section should be read-only... yes
+checking for __attribute__((visibility("hidden")))... yes
+checking for ld used by gcc... (cached) /usr/x86_64-suse-linux/bin/ld
+checking if the linker (/usr/x86_64-suse-linux/bin/ld) is GNU ld... (cached) yes
+checking for shared libgcc... yes
+configure: versioning on shared library symbols is gnu
+checking that generated files are newer than configure... done
+configure: creating ./config.status
+config.status: creating include/Makefile
+config.status: creating include/ffi.h
+config.status: creating Makefile
+config.status: creating testsuite/Makefile
+config.status: creating man/Makefile
+config.status: creating doc/Makefile
+config.status: creating libffi.pc
+config.status: creating fficonfig.h
+config.status: executing buildir commands
+config.status: create top_srcdir/Makefile guessed from local Makefile
+config.status: build in x86_64-unknown-linux-gnu (HOST=x86_64-unknown-linux-gnu)
+config.status: executing depfiles commands
+config.status: executing libtool commands
+config.status: executing include commands
+config.status: executing src commands
+MAKE x86_64-unknown-linux-gnu : 1 * install
+make[1]: Entering directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu'
+Making install in include
+make[2]: Entering directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/include'
+make[3]: Entering directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/include'
+make[3]: Nothing to be done for 'install-exec-am'.
+ /usr/bin/mkdir -p '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/include'
+ /usr/bin/install -c -m 644 ffi.h ffitarget.h '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/include'
+make[3]: Leaving directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/include'
+make[2]: Leaving directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/include'
+Making install in testsuite
+make[2]: Entering directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/testsuite'
+make[3]: Entering directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/testsuite'
+make[3]: Nothing to be done for 'install-exec-am'.
+make[3]: Nothing to be done for 'install-data-am'.
+make[3]: Leaving directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/testsuite'
+make[2]: Leaving directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/testsuite'
+Making install in man
+make[2]: Entering directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/man'
+make[3]: Entering directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/man'
+make[3]: Nothing to be done for 'install-exec-am'.
+ /usr/bin/mkdir -p '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/share/man/man3'
+ /usr/bin/install -c -m 644 ../../man/ffi.3 ../../man/ffi_call.3 ../../man/ffi_prep_cif.3 ../../man/ffi_prep_cif_var.3 '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/share/man/man3'
+make[3]: Leaving directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/man'
+make[2]: Leaving directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu/man'
+make[2]: Entering directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu'
+depbase=`echo src/prep_cif.lo | sed 's|[^/]*$|.deps/&|;s|\.lo$||'`;\
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src   -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/prep_cif.lo -MD -MP -MF $depbase.Tpo -c -o src/prep_cif.lo ../src/prep_cif.c &&\
+mv -f $depbase.Tpo $depbase.Plo
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/prep_cif.lo -MD -MP -MF src/.deps/prep_cif.Tpo -c ../src/prep_cif.c  -fPIC -DPIC -o src/.libs/prep_cif.o
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/prep_cif.lo -MD -MP -MF src/.deps/prep_cif.Tpo -c ../src/prep_cif.c  -fPIC -DPIC -o src/prep_cif.o >/dev/null 2>&1
+depbase=`echo src/types.lo | sed 's|[^/]*$|.deps/&|;s|\.lo$||'`;\
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src   -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/types.lo -MD -MP -MF $depbase.Tpo -c -o src/types.lo ../src/types.c &&\
+mv -f $depbase.Tpo $depbase.Plo
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/types.lo -MD -MP -MF src/.deps/types.Tpo -c ../src/types.c  -fPIC -DPIC -o src/.libs/types.o
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/types.lo -MD -MP -MF src/.deps/types.Tpo -c ../src/types.c  -fPIC -DPIC -o src/types.o >/dev/null 2>&1
+depbase=`echo src/raw_api.lo | sed 's|[^/]*$|.deps/&|;s|\.lo$||'`;\
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src   -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/raw_api.lo -MD -MP -MF $depbase.Tpo -c -o src/raw_api.lo ../src/raw_api.c &&\
+mv -f $depbase.Tpo $depbase.Plo
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/raw_api.lo -MD -MP -MF src/.deps/raw_api.Tpo -c ../src/raw_api.c  -fPIC -DPIC -o src/.libs/raw_api.o
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/raw_api.lo -MD -MP -MF src/.deps/raw_api.Tpo -c ../src/raw_api.c  -fPIC -DPIC -o src/raw_api.o >/dev/null 2>&1
+depbase=`echo src/java_raw_api.lo | sed 's|[^/]*$|.deps/&|;s|\.lo$||'`;\
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src   -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/java_raw_api.lo -MD -MP -MF $depbase.Tpo -c -o src/java_raw_api.lo ../src/java_raw_api.c &&\
+mv -f $depbase.Tpo $depbase.Plo
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/java_raw_api.lo -MD -MP -MF src/.deps/java_raw_api.Tpo -c ../src/java_raw_api.c  -fPIC -DPIC -o src/.libs/java_raw_api.o
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/java_raw_api.lo -MD -MP -MF src/.deps/java_raw_api.Tpo -c ../src/java_raw_api.c  -fPIC -DPIC -o src/java_raw_api.o >/dev/null 2>&1
+depbase=`echo src/closures.lo | sed 's|[^/]*$|.deps/&|;s|\.lo$||'`;\
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src   -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/closures.lo -MD -MP -MF $depbase.Tpo -c -o src/closures.lo ../src/closures.c &&\
+mv -f $depbase.Tpo $depbase.Plo
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/closures.lo -MD -MP -MF src/.deps/closures.Tpo -c ../src/closures.c  -fPIC -DPIC -o src/.libs/closures.o
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/closures.lo -MD -MP -MF src/.deps/closures.Tpo -c ../src/closures.c  -fPIC -DPIC -o src/closures.o >/dev/null 2>&1
+depbase=`echo src/tramp.lo | sed 's|[^/]*$|.deps/&|;s|\.lo$||'`;\
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src   -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/tramp.lo -MD -MP -MF $depbase.Tpo -c -o src/tramp.lo ../src/tramp.c &&\
+mv -f $depbase.Tpo $depbase.Plo
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/tramp.lo -MD -MP -MF src/.deps/tramp.Tpo -c ../src/tramp.c  -fPIC -DPIC -o src/.libs/tramp.o
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/tramp.lo -MD -MP -MF src/.deps/tramp.Tpo -c ../src/tramp.c  -fPIC -DPIC -o src/tramp.o >/dev/null 2>&1
+depbase=`echo src/x86/ffi64.lo | sed 's|[^/]*$|.deps/&|;s|\.lo$||'`;\
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src   -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/x86/ffi64.lo -MD -MP -MF $depbase.Tpo -c -o src/x86/ffi64.lo ../src/x86/ffi64.c &&\
+mv -f $depbase.Tpo $depbase.Plo
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/x86/ffi64.lo -MD -MP -MF src/x86/.deps/ffi64.Tpo -c ../src/x86/ffi64.c  -fPIC -DPIC -o src/x86/.libs/ffi64.o
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/x86/ffi64.lo -MD -MP -MF src/x86/.deps/ffi64.Tpo -c ../src/x86/ffi64.c  -fPIC -DPIC -o src/x86/ffi64.o >/dev/null 2>&1
+depbase=`echo src/x86/unix64.lo | sed 's|[^/]*$|.deps/&|;s|\.lo$||'`;\
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src  -I. -I../include -Iinclude -I../src  -MT src/x86/unix64.lo -MD -MP -MF $depbase.Tpo -c -o src/x86/unix64.lo ../src/x86/unix64.S &&\
+mv -f $depbase.Tpo $depbase.Plo
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -I. -I../include -Iinclude -I../src -MT src/x86/unix64.lo -MD -MP -MF src/x86/.deps/unix64.Tpo -c ../src/x86/unix64.S  -fPIC -DPIC -o src/x86/.libs/unix64.o
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -I. -I../include -Iinclude -I../src -MT src/x86/unix64.lo -MD -MP -MF src/x86/.deps/unix64.Tpo -c ../src/x86/unix64.S  -fPIC -DPIC -o src/x86/unix64.o >/dev/null 2>&1
+depbase=`echo src/x86/ffiw64.lo | sed 's|[^/]*$|.deps/&|;s|\.lo$||'`;\
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src   -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/x86/ffiw64.lo -MD -MP -MF $depbase.Tpo -c -o src/x86/ffiw64.lo ../src/x86/ffiw64.c &&\
+mv -f $depbase.Tpo $depbase.Plo
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/x86/ffiw64.lo -MD -MP -MF src/x86/.deps/ffiw64.Tpo -c ../src/x86/ffiw64.c  -fPIC -DPIC -o src/x86/.libs/ffiw64.o
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -MT src/x86/ffiw64.lo -MD -MP -MF src/x86/.deps/ffiw64.Tpo -c ../src/x86/ffiw64.c  -fPIC -DPIC -o src/x86/ffiw64.o >/dev/null 2>&1
+depbase=`echo src/x86/win64.lo | sed 's|[^/]*$|.deps/&|;s|\.lo$||'`;\
+/bin/sh ./libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src  -I. -I../include -Iinclude -I../src  -MT src/x86/win64.lo -MD -MP -MF $depbase.Tpo -c -o src/x86/win64.lo ../src/x86/win64.S &&\
+mv -f $depbase.Tpo $depbase.Plo
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -I. -I../include -Iinclude -I../src -MT src/x86/win64.lo -MD -MP -MF src/x86/.deps/win64.Tpo -c ../src/x86/win64.S  -fPIC -DPIC -o src/x86/.libs/win64.o
+libtool: compile:  gcc -DHAVE_CONFIG_H -I. -I.. -I. -I../include -Iinclude -I../src -I. -I../include -Iinclude -I../src -MT src/x86/win64.lo -MD -MP -MF src/x86/.deps/win64.Tpo -c ../src/x86/win64.S  -fPIC -DPIC -o src/x86/win64.o >/dev/null 2>&1
+gcc -DHAVE_CONFIG_H -I. -I..  -I. -I../include -Iinclude -I../src   -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -DX86_64 -DGENERATE_LIBFFI_MAP \
+ -E -x assembler-with-cpp -o libffi.map ../libffi.map.in
+/bin/sh ./libtool  --tag=CC   --mode=link gcc  -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions   -o libffi_convenience.la  src/prep_cif.lo src/types.lo src/raw_api.lo src/java_raw_api.lo src/closures.lo src/tramp.lo   src/x86/ffi64.lo src/x86/unix64.lo src/x86/ffiw64.lo src/x86/win64.lo 
+libtool: link: ar cru .libs/libffi_convenience.a src/.libs/prep_cif.o src/.libs/types.o src/.libs/raw_api.o src/.libs/java_raw_api.o src/.libs/closures.o src/.libs/tramp.o src/x86/.libs/ffi64.o src/x86/.libs/unix64.o src/x86/.libs/ffiw64.o src/x86/.libs/win64.o 
+libtool: link: ranlib .libs/libffi_convenience.a
+libtool: link: ( cd ".libs" && rm -f "libffi_convenience.la" && ln -s "../libffi_convenience.la" "libffi_convenience.la" )
+/bin/sh ./libtool  --tag=CC   --mode=link gcc  -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math -march=amdfam10 -Wall -fexceptions -no-undefined -version-info `grep -v '^#' ../libtool-version` -Wl,--version-script,libffi.map    -o libffi.la -rpath /home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64 src/prep_cif.lo src/types.lo src/raw_api.lo src/java_raw_api.lo src/closures.lo src/tramp.lo  src/x86/ffi64.lo src/x86/unix64.lo src/x86/ffiw64.lo src/x86/win64.lo 
+libtool: link: gcc -shared  -fPIC -DPIC  src/.libs/prep_cif.o src/.libs/types.o src/.libs/raw_api.o src/.libs/java_raw_api.o src/.libs/closures.o src/.libs/tramp.o src/x86/.libs/ffi64.o src/x86/.libs/unix64.o src/x86/.libs/ffiw64.o src/x86/.libs/win64.o    -O3 -march=amdfam10 -Wl,--version-script -Wl,libffi.map   -Wl,-soname -Wl,libffi.so.8 -o .libs/libffi.so.8.1.0
+libtool: link: (cd ".libs" && rm -f "libffi.so.8" && ln -s "libffi.so.8.1.0" "libffi.so.8")
+libtool: link: (cd ".libs" && rm -f "libffi.so" && ln -s "libffi.so.8.1.0" "libffi.so")
+libtool: link: ar cru .libs/libffi.a  src/prep_cif.o src/types.o src/raw_api.o src/java_raw_api.o src/closures.o src/tramp.o src/x86/ffi64.o src/x86/unix64.o src/x86/ffiw64.o src/x86/win64.o
+libtool: link: ranlib .libs/libffi.a
+libtool: link: ( cd ".libs" && rm -f "libffi.la" && ln -s "../libffi.la" "libffi.la" )
+make[3]: Entering directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu'
+ /usr/bin/mkdir -p '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64'
+ /bin/sh ./libtool   --mode=install /usr/bin/install -c   libffi.la '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64'
+libtool: install: /usr/bin/install -c .libs/libffi.so.8.1.0 /home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64/libffi.so.8.1.0
+libtool: install: (cd /home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64 && { ln -s -f libffi.so.8.1.0 libffi.so.8 || { rm -f libffi.so.8 && ln -s libffi.so.8.1.0 libffi.so.8; }; })
+libtool: install: (cd /home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64 && { ln -s -f libffi.so.8.1.0 libffi.so || { rm -f libffi.so && ln -s libffi.so.8.1.0 libffi.so; }; })
+libtool: install: /usr/bin/install -c .libs/libffi.lai /home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64/libffi.la
+libtool: install: /usr/bin/install -c .libs/libffi.a /home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64/libffi.a
+libtool: install: chmod 644 /home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64/libffi.a
+libtool: install: ranlib /home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64/libffi.a
+libtool: finish: PATH="/home/e681/e681/skailasa/.cargo/bin:/lus/cls01095/work/y07/shared/bolt/0.7/bin:/work/y07/shared/utils/bin:/opt/cray/pe/perftools/20.10.0/bin:/opt/cray/pe/papi/6.0.0.4/bin:/opt/cray/libfabric/1.11.0.0.233/bin:/opt/cray/pe/craype/2.7.2/bin:/opt/AMD/aocc-compiler-2.1.0/bin:/home1/home/e681/e681/skailasa/.vscode-server/bin/3a6960b964327f0e3882ce18fcebd07ed191b316/bin:/home/e681/e681/skailasa/.vscode-server/bin/3a6960b964327f0e3882ce18fcebd07ed191b316/bin:/home/e681/e681/skailasa/.cargo/bin:/usr/local/maven/bin:/usr/local/Modules/bin:/usr/local/bin:/usr/bin:/bin:/usr/lib/mit/bin:/opt/cray/pe/bin:/sbin" ldconfig -n /home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64
+----------------------------------------------------------------------
+Libraries have been installed in:
+   /home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/../lib64
+
+If you ever happen to want to link against installed libraries
+in a given directory, LIBDIR, you must either use libtool, and
+specify the full pathname of the library, or use the '-LLIBDIR'
+flag during linking and do at least one of the following:
+   - add LIBDIR to the 'LD_LIBRARY_PATH' environment variable
+     during execution
+   - add LIBDIR to the 'LD_RUN_PATH' environment variable
+     during linking
+   - use the '-Wl,-rpath -Wl,LIBDIR' linker flag
+   - have your system administrator add LIBDIR to '/etc/ld.so.conf'
+
+See any operating system documentation about shared libraries for
+more information, such as the ld(1) and ld.so(8) manual pages.
+----------------------------------------------------------------------
+ /usr/bin/mkdir -p '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/pkgconfig'
+ /usr/bin/install -c -m 644 libffi.pc '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib/pkgconfig'
+make[3]: Leaving directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu'
+make[2]: Leaving directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu'
+make[1]: Leaving directory '/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-build/x86_64-unknown-linux-gnu'
+cargo:rustc-link-lib=static=ffi
+cargo:rustc-link-search=/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib
+cargo:rustc-link-search=/home1/home/e681/e681/skailasa/distributed-trees/scaling_tests/target/debug/build/libffi-sys-d1fd626af9535525/out/libffi-root/lib64
