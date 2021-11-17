@@ -1,3 +1,4 @@
+use std::time::Instant;
 use std::collections::{HashMap, HashSet};
 
 use memoffset::offset_of;
@@ -25,6 +26,9 @@ pub const MPI_PROC_NULL: i32 = -1;
 
 /// Type alias for a tree data structure.
 pub type Tree = HashMap<Key, Leaves>;
+
+/// Type alias for time measurements.
+pub type Times = HashMap<String, u128>;
 
 #[derive(Debug, Copy, Clone)]
 /// **Weight** of a given **Block**. Defined by number of original **Leaf** nodes it contains.
@@ -497,8 +501,8 @@ pub fn block_partition(
 
 /// Split **Blocks** to satisfy a maximum of NCRIT particles per node in the final octree
 /// (sequential).
-pub fn split_blocks(local_leaves: &mut Leaves, depth: &u64, ncrit: &usize) -> HashMap<Key, Leaves> {
-    let mut blocks: HashMap<Key, Leaves> = HashMap::new();
+pub fn split_blocks(local_leaves: &mut Leaves, depth: &u64, ncrit: &usize) -> Tree {
+    let mut blocks: Tree = HashMap::new();
 
     for &leaf in local_leaves.iter() {
         blocks.entry(leaf.block).or_default().push(leaf);
@@ -675,28 +679,37 @@ pub fn unbalanced_tree(
     mut points: &mut Points,
     x0: Point,
     r0: f64,
-) -> Tree{
+) -> (Tree, Times) {
     let world = universe.world();
     let rank = world.rank();
     let size = world.size();
 
+    let mut time: Times = HashMap::new();
+
     // 1. Encode points to leaf keys inplace.
+    let sim_start  = Instant::now();
     encode_points(&mut points, &depth, &depth, &x0, &r0);
+    time.insert("encoding".to_string(), sim_start.elapsed().as_millis());
 
     // 2. Perform parallel Morton sort over points
+    let start = Instant::now();
     let (mut sorted_leaves, mut sorted_points) = sample_sort(
         &mut points,
         size,
         world,
     );
+    time.insert("sorting".to_string(), start.elapsed().as_millis());
 
     let points = sorted_points;
     let local_leaves = sorted_leaves;
 
+    let start = Instant::now();
     // 3. Remove duplicates at each processor and remove overlaps if there are any
     let local_leaves = unique_leaves(local_leaves, ncrit, true);
+    time.insert("overlap".to_string(), start.elapsed().as_millis());
 
     // 4.i Complete minimal tree on each process, and find seed octants.
+    let start = Instant::now();
     let mut seeds = find_seeds(&local_leaves, depth);
 
     // 4.ii If leaf is less than the minimum seed in a given process, it needs to be sent to the
@@ -716,20 +729,30 @@ pub fn unbalanced_tree(
         world,
         size,
     );
+    time.insert("seed".to_string(), start.elapsed().as_millis());
 
     let mut local_leaves = received_leaves;
     let points = received_points;
 
     // 5. Complete minimal block-tree across processes
+    let start = Instant::now();
     let mut local_blocktree = complete_blocktree(&mut seeds, depth, rank, size, world);
+    time.insert("minimal_block_tree".to_string(), start.elapsed().as_millis());
 
     // Associate leaves with blocks
+    let start = Instant::now();
     assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, depth);
+    time.insert("block_assignment".to_string(), start.elapsed().as_millis());
 
     // 6. Split blocks into adaptive tree, and pass into Octree structure.
+    let start = Instant::now();
     let nodes = split_blocks(&mut local_leaves, depth, ncrit);
+    time.insert("block_splitting".to_string(), start.elapsed().as_millis());
 
-    nodes
+    // Record simulation time
+    time.insert("total".to_string(), sim_start.elapsed().as_millis());
+
+    (nodes, time)
 }
 
 mod tests {

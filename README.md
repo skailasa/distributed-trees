@@ -43,7 +43,7 @@ We initially build an unbalanced tree from particle coordinate data distributed 
 ## Binary
 
 ```bash
-source .env && cd tree && cargo build
+source .env && cd tree && cargo build --release
 ```
 
 ## Documentation
@@ -84,6 +84,14 @@ cd parallel_tests && cargo mpirun --bin parallel_tests
 ```
 
 These also act as examples for usage of the library.
+
+# Scaling
+
+Build binaries for Strong and Weak scaling tests, intended for cluster deployment.
+
+```bash
+cd scaling_tests && cargo build --release
+```
 
 ## References
 [1] Sundar, Hari, Rahul S. Sampath, and George Biros. "Bottom-up construction and 2: 1 balance refinement of linear octrees in parallel." SIAM Journal on Scientific Computing 30.5 (2008): 2675-2708.

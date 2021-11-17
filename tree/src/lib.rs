@@ -22,3 +22,6 @@ pub mod tree;
 
 /// Data manipulation and generation tools.
 pub mod data;
+
+/// Timing tools
+pub mod time;

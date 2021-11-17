@@ -19,11 +19,8 @@ fn main() {
 
     // 0. Experimental Parameters
     let depth: u64 = std::env::var("DEPTH").unwrap().parse().unwrap_or(3);
-    // let npoints: u64 = std::env::var("NPOINTS").unwrap().parse().unwrap_or(1000);
+    let npoints: u64 = std::env::var("NPOINTS").unwrap().parse().unwrap_or(1000);
     let ncrit: usize = std::env::var("NCRIT").unwrap().parse().unwrap_or(1000);
-    let n_max: u64 = 32;
-    let n: u64 = n_max/(size as u64);
-    let npoints: u64 = n*(1000000);
 
     // Generate random test points on a given process.
     let mut points = random(npoints);
@@ -39,8 +36,8 @@ fn main() {
     // Generate distributed unbalanced tree from a set of distributed points
     let (unbalanced, times) = unbalanced_tree(&depth, &ncrit, &universe, &mut points, x0, r0);
 
+    // Sync for timing purposes
     world.barrier();
-
     // broadcast total number of leaves into root rank
     let nleaves = unbalanced.len() as u32;
     let mut sum = 0;
@@ -59,7 +56,6 @@ fn main() {
             times.get(&"encoding".to_string()),
             times.get(&"sorting".to_string())
         )
-
     } else {
         world
             .process_at_rank(root_rank)

@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use mpi::traits::*;
 use mpi::collective::{SystemOperation};
 
@@ -19,7 +17,6 @@ fn main() {
 
     // 0. Experimental Parameters
     let depth: u64 = std::env::var("DEPTH").unwrap().parse().unwrap_or(3);
-    // let npoints: u64 = std::env::var("NPOINTS").unwrap().parse().unwrap_or(1000);
     let ncrit: usize = std::env::var("NCRIT").unwrap().parse().unwrap_or(1000);
     let n_max: u64 = 32;
     let n: u64 = n_max/(size as u64);
@@ -59,7 +56,6 @@ fn main() {
             times.get(&"encoding".to_string()),
             times.get(&"sorting".to_string())
         )
-
     } else {
         world
             .process_at_rank(root_rank)
