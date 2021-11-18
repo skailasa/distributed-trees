@@ -43,7 +43,7 @@ We initially build an unbalanced tree from particle coordinate data distributed 
 ## Binary
 
 ```bash
-cargo build
+source .env && cd tree && cargo build --release
 ```
 
 ## Documentation
@@ -61,6 +61,8 @@ Set tree parameters in `.env` file
 export NPROCS=4 # Number of MPI processes
 export DEPTH=3 # Maximum depth of octree
 export NPOINTS=100000 # Number of points to distribute randomly (for testing)
+export NCRIT=100 # Maximum number of points per leaf node
+export CRAY=0 # '0' if not on cray system, '1' otherwise.
 ```
 
 ```bash
@@ -78,10 +80,18 @@ cd tree && cargo test
 Run tests for public MPI functions:
 
 ```bash
-cd parallel_tests && cargo mpirun -n $NPROCS parallel_tests
+cd parallel_tests && cargo mpirun --bin parallel_tests
 ```
 
 These also act as examples for usage of the library.
+
+# Scaling
+
+Build binaries for Strong and Weak scaling tests, intended for cluster deployment.
+
+```bash
+cd scaling_tests && cargo build --release
+```
 
 ## References
 [1] Sundar, Hari, Rahul S. Sampath, and George Biros. "Bottom-up construction and 2: 1 balance refinement of linear octrees in parallel." SIAM Journal on Scientific Computing 30.5 (2008): 2675-2708.

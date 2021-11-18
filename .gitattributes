@@ -1,0 +1,6 @@
+# Jupyter notebook
+*.ipynb linguist-documentation
+
+# Source files
+# ============
+*.rs text diff=rus

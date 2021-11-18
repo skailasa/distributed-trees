@@ -1,13 +1,14 @@
+use std::time::Instant;
 use std::collections::{HashMap, HashSet};
 
 use memoffset::offset_of;
 use mpi::{
     collective::SystemOperation,
-    datatype::{Equivalence, UncommittedUserDatatype, UserDatatype},
+    datatype::{Equivalence, UncommittedUserDatatype, UserDatatype, Partition, PartitionMut},
     environment::Universe,
     topology::{Rank, SystemCommunicator},
     traits::*,
-    Address,
+    Address, Count
 };
 use rand::{thread_rng, Rng};
 
@@ -25,6 +26,9 @@ pub const MPI_PROC_NULL: i32 = -1;
 
 /// Type alias for a tree data structure.
 pub type Tree = HashMap<Key, Leaves>;
+
+/// Type alias for time measurements.
+pub type Times = HashMap<String, u128>;
 
 #[derive(Debug, Copy, Clone)]
 /// **Weight** of a given **Block**. Defined by number of original **Leaf** nodes it contains.
@@ -169,7 +173,8 @@ pub fn transfer_leaves_to_coarse_blocktree(
         min_seed = *seeds.iter().min().unwrap();
     }
 
-    let prev_rank = rank - 1;
+    let prev_rank = if rank > 0 { rank - 1 } else {size-1};
+    let next_rank = if rank +1 < size { rank + 1 } else { 0 };
 
     if rank > 0 {
         let msg: Leaves = local_leaves
@@ -178,12 +183,17 @@ pub fn transfer_leaves_to_coarse_blocktree(
             .cloned()
             .collect();
 
+        let msg_size: u32 = msg.len() as u32;
+        world.process_at_rank(prev_rank).send(&msg_size);
         world.process_at_rank(prev_rank).send(&msg[..]);
     }
 
     if rank < (size - 1) {
-        let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
-        received_leaves.append(&mut rec);
+        let mut bufsize = 0;
+        world.process_at_rank(next_rank).receive_into(&mut bufsize);
+        let mut buffer = vec![Leaf::default(); bufsize as usize];
+        world.process_at_rank(next_rank).receive_into(&mut buffer[..]);
+        received_leaves.append(&mut buffer);
     }
 
     if rank > 0 {
@@ -193,12 +203,17 @@ pub fn transfer_leaves_to_coarse_blocktree(
             .cloned()
             .collect();
 
+        let msg_size: u32 = msg.len() as u32;
+        world.process_at_rank(prev_rank).send(&msg_size);
         world.process_at_rank(prev_rank).send(&msg[..]);
     }
 
     if rank < (size - 1) {
-        let (mut rec, _) = world.any_process().receive_vec::<Point>();
-        received_points.append(&mut rec);
+        let mut bufsize = 0;
+        world.process_at_rank(next_rank).receive_into(&mut bufsize);
+        let mut buffer = vec![Point::default(); bufsize as usize];
+        world.process_at_rank(next_rank).receive_into(&mut buffer[..]);
+        received_points.append(&mut buffer);
     }
 
     let mut local_leaves: Leaves = local_leaves
@@ -264,15 +279,19 @@ pub fn complete_blocktree(
         seeds.push(last_child);
     }
 
+    let next_rank = if rank + 1 < size { rank + 1 } else { 0 };
+    let previous_rank = if rank > 0 { rank - 1 } else { size - 1 };
+
     // Send required data to partner process.
     if rank > 0 {
         let min = *seeds.iter().min().unwrap();
-        world.process_at_rank(rank - 1).send(&min);
+        world.process_at_rank(previous_rank).send(&min);
     }
 
     if rank < (size - 1) {
-        let rec = world.any_process().receive::<Key>();
-        seeds.push(rec.0);
+        let mut rec = Key::default();
+        world.process_at_rank(next_rank).receive_into(&mut rec);
+        seeds.push(rec);
     }
 
     // Complete region between seeds at each process
@@ -482,8 +501,8 @@ pub fn block_partition(
 
 /// Split **Blocks** to satisfy a maximum of NCRIT particles per node in the final octree
 /// (sequential).
-pub fn split_blocks(local_leaves: &mut Leaves, depth: &u64, ncrit: &usize) -> HashMap<Key, Leaves> {
-    let mut blocks: HashMap<Key, Leaves> = HashMap::new();
+pub fn split_blocks(local_leaves: &mut Leaves, depth: &u64, ncrit: &usize) -> Tree {
+    let mut blocks: Tree = HashMap::new();
 
     for &leaf in local_leaves.iter() {
         blocks.entry(leaf.block).or_default().push(leaf);
@@ -523,12 +542,10 @@ pub fn split_blocks(local_leaves: &mut Leaves, depth: &u64, ncrit: &usize) -> Ha
 /// Perform parallelised sample sort on a distributed set of **Leaves** (parallel).
 pub fn sample_sort(
     mut points: &mut Points,
-    received_leaves: &mut Leaves,
-    received_points: &mut Points,
     size: Rank,
-    rank: Rank,
     world: SystemCommunicator,
-) {
+) -> (Leaves, Points)
+{
     let local_leaves = keys_to_leaves(&mut points);
 
     let mut received_samples = vec![Leaf::default(); K * (size as usize)];
@@ -556,7 +573,8 @@ pub fn sample_sort(
     let nsplitters = splitters.len();
 
     // 2. Sort local leaves into buckets
-    let mut buckets: Vec<Leaves> = vec![Vec::new(); size as usize];
+    let mut buckets_leaves: Vec<Leaves> = vec![Vec::new(); size as usize];
+
     // Sort local points into corresponding buckets
     let mut buckets_points: Vec<Points> = vec![Vec::new(); size as usize];
 
@@ -565,11 +583,11 @@ pub fn sample_sort(
             if i < nsplitters {
                 let s = &splitters[i];
                 if leaf < s {
-                    buckets[i].push(leaf.clone());
+                    buckets_leaves[i].push(leaf.clone());
                     break;
                 }
             } else {
-                buckets[i].push(leaf.clone())
+                buckets_leaves[i].push(leaf.clone())
             }
         }
     }
@@ -589,75 +607,109 @@ pub fn sample_sort(
     }
 
     // 3. Send all local buckets to their matching processor.
-    for r in 0..size {
-        if rank != r {
-            // let sent_leaves = &buckets[r as usize];
-            let sent = &buckets_points[r as usize];
-            world.process_at_rank(r).send(&sent[..]);
-        } else {
-            for _ in 1..world.size() {
-                // let (mut rec_leaves, _) = world.any_process().receive_vec::<Leaf>();
-                let (mut rec, _) = world.any_process().receive_vec::<Point>();
-                received_points.append(&mut rec);
-            }
-        }
-        world.barrier();
-    }
-    for r in 0..size {
-        if rank != r {
-            let sent = &buckets[r as usize];
-            world.process_at_rank(r).send(&sent[..]);
-        } else {
-            for _ in 1..world.size() {
-                let (mut rec, _) = world.any_process().receive_vec::<Leaf>();
-                received_leaves.append(&mut rec);
-            }
-        }
-        world.barrier();
-    }
+
+    let mut received_leaves = all_to_all(world, size, buckets_leaves);
+    let received_points = all_to_all(world, size, buckets_points);
+
     // 4. Sort leaves on matching processors.
-    received_leaves.append(&mut buckets[rank as usize]);
-    received_points.append(&mut buckets_points[rank as usize]);
     received_leaves.sort();
+    (received_leaves, received_points)
 }
+
+fn all_to_all<T:>(
+    world: SystemCommunicator,
+    size: Rank,
+    buckets: Vec<Vec<T>>) -> Vec<T>
+where T: Default+Clone+Equivalence
+{
+
+    let mut counts_snd: Vec<Count> = vec![0; size as usize];
+
+    for (i, bucket) in buckets.iter().enumerate() {
+        counts_snd[i] = bucket.len() as Count;
+    }
+
+    // Flatten buckets, after bucketing
+    let buckets_flat: Vec<T> = buckets.into_iter().flatten().collect();
+
+    let displs_snd: Vec<Count> = counts_snd
+        .iter()
+        .scan(0, |acc, &x| {
+            let tmp = *acc;
+            *acc += x;
+            Some(tmp)
+        })
+        .collect();
+
+    // All to All for bucket sizes
+    let mut counts_recv: Vec<Count> = vec![0; size as usize];
+
+    world.all_to_all_into(&counts_snd[..], &mut counts_recv[..]);
+
+    // displacements
+    let displs_recv: Vec<Count> = counts_recv
+        .iter()
+        .scan(0, |acc, &x| {
+            let tmp = *acc;
+            *acc += x;
+            Some(tmp)
+        })
+        .collect();
+
+    // Allocate a buffer to receive relevant data from all processes.
+    let total: Count = counts_recv.iter().sum();
+    let mut received = vec![T::default(); total as usize];
+    let mut partition_receive = PartitionMut::new(&mut received[..], counts_recv, &displs_recv[..]);
+
+    // Allocate a partition of the data to send to each process
+    let partition_snd = Partition::new(&buckets_flat[..], counts_snd, &displs_snd[..]);
+
+    world.all_to_all_varcount_into(&partition_snd, &mut partition_receive);
+
+    received
+}
+
+
 
 /// Generate a distributed unbalanced tree from a set of distributed points.
 pub fn unbalanced_tree(
     depth: &u64,
     ncrit: &usize,
-    universe: Universe,
+    universe: &Universe,
     mut points: &mut Points,
     x0: Point,
     r0: f64,
-) -> Tree {
+) -> (Tree, Times) {
     let world = universe.world();
     let rank = world.rank();
     let size = world.size();
 
-    // 1. Encode points to leaf keys inplace.
-    encode_points(&mut points, &depth, &depth, &x0, &r0);
+    let mut time: Times = HashMap::new();
 
-    // Temporary buffer for receiving partner keys
-    let mut sorted_leaves: Leaves = Vec::new();
-    let mut sorted_points: Points = Vec::new();
+    // 1. Encode points to leaf keys inplace.
+    let sim_start  = Instant::now();
+    encode_points(&mut points, &depth, &depth, &x0, &r0);
+    time.insert("encoding".to_string(), sim_start.elapsed().as_millis());
 
     // 2. Perform parallel Morton sort over points
-    sample_sort(
+    let start = Instant::now();
+    let (mut sorted_leaves, mut sorted_points) = sample_sort(
         &mut points,
-        &mut sorted_leaves,
-        &mut sorted_points,
         size,
-        rank,
         world,
     );
+    time.insert("sorting".to_string(), start.elapsed().as_millis());
 
     let points = sorted_points;
     let local_leaves = sorted_leaves;
 
+    let start = Instant::now();
     // 3. Remove duplicates at each processor and remove overlaps if there are any
     let local_leaves = unique_leaves(local_leaves, ncrit, true);
+    time.insert("overlap".to_string(), start.elapsed().as_millis());
 
     // 4.i Complete minimal tree on each process, and find seed octants.
+    let start = Instant::now();
     let mut seeds = find_seeds(&local_leaves, depth);
 
     // 4.ii If leaf is less than the minimum seed in a given process, it needs to be sent to the
@@ -677,20 +729,30 @@ pub fn unbalanced_tree(
         world,
         size,
     );
+    time.insert("seed".to_string(), start.elapsed().as_millis());
 
     let mut local_leaves = received_leaves;
     let points = received_points;
 
     // 5. Complete minimal block-tree across processes
+    let start = Instant::now();
     let mut local_blocktree = complete_blocktree(&mut seeds, depth, rank, size, world);
+    time.insert("minimal_block_tree".to_string(), start.elapsed().as_millis());
 
     // Associate leaves with blocks
+    let start = Instant::now();
     assign_blocks_to_leaves(&mut local_leaves, &local_blocktree, depth);
+    time.insert("block_assignment".to_string(), start.elapsed().as_millis());
 
     // 6. Split blocks into adaptive tree, and pass into Octree structure.
+    let start = Instant::now();
     let nodes = split_blocks(&mut local_leaves, depth, ncrit);
+    time.insert("block_splitting".to_string(), start.elapsed().as_millis());
 
-    nodes
+    // Record simulation time
+    time.insert("total".to_string(), sim_start.elapsed().as_millis());
+
+    (nodes, time)
 }
 
 mod tests {
