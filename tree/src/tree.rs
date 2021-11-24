@@ -3,10 +3,11 @@ use std::collections::{HashMap, HashSet};
 
 use memoffset::offset_of;
 use mpi::{
+    request::{CancelGuard, WaitGuard},
     collective::SystemOperation,
     datatype::{Equivalence, UncommittedUserDatatype, UserDatatype, Partition, PartitionMut},
     environment::Universe,
-    topology::{Rank, SystemCommunicator},
+    topology::{Rank, SystemCommunicator, Color, UserCommunicator},
     traits::*,
     Address, Count
 };
@@ -607,7 +608,6 @@ pub fn sample_sort(
     }
 
     // 3. Send all local buckets to their matching processor.
-
     let mut received_leaves = all_to_all(world, size, buckets_leaves);
     let received_points = all_to_all(world, size, buckets_points);
 
@@ -616,7 +616,7 @@ pub fn sample_sort(
     (received_leaves, received_points)
 }
 
-fn all_to_all<T:>(
+fn all_to_all<T>(
     world: SystemCommunicator,
     size: Rank,
     buckets: Vec<Vec<T>>) -> Vec<T>
@@ -669,6 +669,66 @@ where T: Default+Clone+Equivalence
     received
 }
 
+
+/// Send messages of size 1, in a vector
+pub fn send_recv_kway<S, R>
+    (
+        comm: UserCommunicator,
+        rank: Rank,
+        k: Rank,
+        sendbuf: &S,
+        recvbuf: &mut R
+    )-> UserCommunicator
+where
+    S: Buffer+?Sized,
+    R: BufferMut+?Sized,
+ {
+
+    let p = comm.size();
+    let m: Rank = p / k;
+    let color: Rank = rank/m;
+    let x = rank as f32;
+    let mut y: f32 = 0.0;
+
+    for i in 1..k {
+        mpi::request::scope(|scope| {
+            let precv: Rank = (m*((color-i) % k)).abs() + (rank % m);
+            let psend: Rank = (m*((color+i) % k)).abs() + (rank % m);
+            let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, sendbuf));
+            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, recvbuf));
+        });
+    }
+
+    let new_comm = comm.split_by_color(Color::with_value(color));
+    new_comm.unwrap()
+}
+
+pub fn send_recv_kwayv() {}
+
+// pub fn all_to_all_kway() {}
+
+pub fn all_to_all_kway_i32(
+        mut comm: UserCommunicator,
+        rank: Rank,
+        k: Rank,
+        mut sendbuf: Vec<i32>,
+        mut recvbuf: Vec<i32>,
+    ) -> Vec<i32>
+{
+
+    let mut p = comm.size();
+
+    while p > 1 {
+        comm = send_recv_kway(comm, rank, k, &sendbuf[..], &mut recvbuf[..]);
+        p = comm.size();
+        sendbuf.append(&mut recvbuf);
+        recvbuf = vec![0 as i32; sendbuf.len() as usize];
+    }
+
+    sendbuf
+}
+
+pub fn all_to_all_kwayv() {}
 
 
 /// Generate a distributed unbalanced tree from a set of distributed points.
