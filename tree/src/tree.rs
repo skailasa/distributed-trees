@@ -703,10 +703,38 @@ where
     new_comm.unwrap()
 }
 
-pub fn send_recv_kwayv() {}
 
-// pub fn all_to_all_kway() {}
+/// Send messages of variable sizes
+pub fn all_to_all_kwayv_i32(
+    mut comm: UserCommunicator,
+    rank: Rank,
+    k: Rank,
+    mut msgs: Vec<i32>,
+    msg_sizes: Vec<usize>
+) -> Vec<i32>
+{
 
+    let mut i: usize = 1;
+    let mut j: usize = k as usize;
+    let mut p = comm.size();
+    let mut received = vec![0 as i32; msg_sizes[i..j].iter().sum()];
+
+    while p > 1 {
+        comm = send_recv_kway(comm, rank, k, &msgs[..], &mut received[..]);
+        p = comm.size();
+        msgs.append(&mut received);
+
+        if p != 1 {
+            i = (k as usize)*i;
+            j = (k as usize)*j;
+            let size: usize = msg_sizes[i..j].iter().sum();
+            received = vec![0 as i32; size];
+        }
+    }
+    msgs
+}
+
+/// Send messages of size 1
 pub fn all_to_all_kway_i32(
         mut comm: UserCommunicator,
         rank: Rank,
@@ -727,8 +755,6 @@ pub fn all_to_all_kway_i32(
 
     sendbuf
 }
-
-pub fn all_to_all_kwayv() {}
 
 
 /// Generate a distributed unbalanced tree from a set of distributed points.
