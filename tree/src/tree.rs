@@ -669,34 +669,99 @@ where T: Default+Clone+Equivalence
     received
 }
 
+pub fn modulo(a: i32, b: i32) -> i32 {
+    ((a % b) + b) % b
+}
 
 /// Send messages of size 1, in a vector
-pub fn send_recv_kway<S, R>
+pub fn send_recv_kway
     (
         comm: UserCommunicator,
         rank: Rank,
         k: Rank,
-        sendbuf: &S,
-        recvbuf: &mut R
+        sendbuf: &Vec<i32>,
+        mut recvbuf: &mut Vec<i32>
     )-> UserCommunicator
-where
-    S: Buffer+?Sized,
-    R: BufferMut+?Sized,
  {
 
     let p = comm.size();
     let m: Rank = p / k;
     let color: Rank = rank/m;
-    let x = rank as f32;
-    let mut y: f32 = 0.0;
+
+    let size = sendbuf.len() as usize;
+    let mut tmpbuf = vec![0 as i32; size];
 
     for i in 1..k {
         mpi::request::scope(|scope| {
-            let precv: Rank = (m*((color-i) % k)).abs() + (rank % m);
-            let psend: Rank = (m*((color+i) % k)).abs() + (rank % m);
-            let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, sendbuf));
-            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, recvbuf));
+
+            let precv: Rank = (m*(modulo(color-i, k))) + (rank % m);
+            let psend: Rank = (m*(modulo(color+i, k))) + (rank % m);
+
+            // println!("RANK {:?}, precv {:?} psend {:?}", rank, precv, psend);
+            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut tmpbuf[..]));
+            let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, &sendbuf[..]));
+
         });
+        recvbuf.append(&mut tmpbuf);
+        tmpbuf = vec![0 as i32; size];
+    }
+
+    let new_comm = comm.split_by_color(Color::with_value(color));
+    new_comm.unwrap()
+}
+
+
+
+/// Send messages of size 1, in a vector
+pub fn send_recv_kwayv
+    (
+        comm: UserCommunicator,
+        rank: Rank,
+        k: Rank,
+        sendbuf: &Vec<i32>,
+        mut recvbuf: &mut Vec<i32>,
+    )-> UserCommunicator
+ {
+
+    let p = comm.size();
+    let m: Rank = p / k;
+    let color: Rank = rank/m;
+
+    // Size of message being sent
+    let send_msg_len = sendbuf.len();
+    let local_msg_sizes = vec![send_msg_len as i32];
+    let mut msg_sizes: Vec<i32> = Vec::new();
+
+    // Find message sizes
+    for i in 1..k {
+        let precv: Rank = (m*(modulo(color-i, k))) + (rank % m);
+        let psend: Rank = (m*(modulo(color+i, k))) + (rank % m);
+
+        let mut tmpbuf = vec![0 as i32];
+
+        mpi::request::scope(|scope| {
+            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut tmpbuf[..]));
+            let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, &local_msg_sizes[..]));
+
+        });
+        msg_sizes.append(&mut tmpbuf);
+    }
+
+    // Use this to allocate buffers of variable length
+    for i in 1..k {
+        let precv: Rank = (m*(modulo(color-i, k))) + (rank % m);
+        let psend: Rank = (m*(modulo(color+i, k))) + (rank % m);
+        let size: usize = msg_sizes[(i-1) as usize] as usize;
+
+        let mut tmpbuf = vec![0 as i32; size];
+
+        mpi::request::scope(|scope| {
+            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut tmpbuf[..]));
+            let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, &sendbuf[..]));
+        });
+
+        recvbuf.append(&mut tmpbuf);
+
     }
 
     let new_comm = comm.split_by_color(Color::with_value(color));
@@ -710,26 +775,18 @@ pub fn all_to_all_kwayv_i32(
     rank: Rank,
     k: Rank,
     mut msgs: Vec<i32>,
-    msg_sizes: Vec<usize>
 ) -> Vec<i32>
 {
 
     let mut i: usize = 1;
-    let mut j: usize = k as usize;
     let mut p = comm.size();
-    let mut received = vec![0 as i32; msg_sizes[i..j].iter().sum()];
+    let mut received = Vec::new();
 
     while p > 1 {
-        comm = send_recv_kway(comm, rank, k, &msgs[..], &mut received[..]);
+        comm = send_recv_kwayv(comm, rank, k, &msgs, &mut received);
         p = comm.size();
         msgs.append(&mut received);
-
-        if p != 1 {
-            i = (k as usize)*i;
-            j = (k as usize)*j;
-            let size: usize = msg_sizes[i..j].iter().sum();
-            received = vec![0 as i32; size];
-        }
+        received = Vec::new();
     }
     msgs
 }
@@ -747,10 +804,11 @@ pub fn all_to_all_kway_i32(
     let mut p = comm.size();
 
     while p > 1 {
-        comm = send_recv_kway(comm, rank, k, &sendbuf[..], &mut recvbuf[..]);
+        println!("RANK {:?} SENDING {:?} ", rank, sendbuf);
+        comm = send_recv_kway(comm, rank, k, &sendbuf, &mut recvbuf);
         p = comm.size();
         sendbuf.append(&mut recvbuf);
-        recvbuf = vec![0 as i32; sendbuf.len() as usize];
+        recvbuf = Vec::new();
     }
 
     sendbuf
