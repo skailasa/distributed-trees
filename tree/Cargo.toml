@@ -17,5 +17,5 @@ memoffset = "0.6"
 rustdoc-args = [ "--html-in-header", "./src/docs-header.html" ]
 
 [[bin]]
-name = "foo"
-path = "src/foo/bin/main.rs"
+name = "alltoall"
+path = "src/alltoall/bin/main.rs"

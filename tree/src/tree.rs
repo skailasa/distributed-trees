@@ -616,7 +616,7 @@ pub fn sample_sort(
     (received_leaves, received_points)
 }
 
-fn all_to_all<T>(
+pub fn all_to_all<T>(
     world: SystemCommunicator,
     size: Rank,
     buckets: Vec<Vec<T>>) -> Vec<T>
@@ -709,9 +709,6 @@ pub fn send_recv_kway
     let new_comm = comm.split_by_color(Color::with_value(color));
     new_comm.unwrap()
 }
-
-
-
 /// Send messages of size 1, in a vector
 pub fn send_recv_kwayv
     (
@@ -742,7 +739,6 @@ pub fn send_recv_kwayv
         mpi::request::scope(|scope| {
             let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut tmpbuf[..]));
             let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, &local_msg_sizes[..]));
-
         });
         msg_sizes.append(&mut tmpbuf);
     }
@@ -804,7 +800,6 @@ pub fn all_to_all_kway_i32(
     let mut p = comm.size();
 
     while p > 1 {
-        println!("RANK {:?} SENDING {:?} ", rank, sendbuf);
         comm = send_recv_kway(comm, rank, k, &sendbuf, &mut recvbuf);
         p = comm.size();
         sendbuf.append(&mut recvbuf);

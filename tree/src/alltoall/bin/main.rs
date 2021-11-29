@@ -1,4 +1,5 @@
 use std::time::Instant;
+use std::collections::HashMap;
 
 use mpi::traits::*;
 use mpi::collective::{SystemOperation};
@@ -20,35 +21,35 @@ fn main() {
     let k: i32 = 4;
 
     // Each process receives K-1 messages
-    let msgs = vec![rank; ((rank+1)*(rank+1)) as usize];
-    let buckets = Vec::new();
+    let msgs = vec![rank; 1e6 as usize];
+    let mut buckets: Vec<Vec<i32>> = vec![Vec::new(); (size-1) as usize];
 
-    for i in 1..size {
-        buckets.insert(&msgs.clone());
+    for i in 0..(size-1) {
+        for msg in &msgs {
+            buckets[i as usize].push(msg.clone());
+        }
     }
 
-    let world = universe.world();
-    let world = world.split_by_color(Color::with_value(0)).unwrap();
-
-    let times: Times = HashMap::new();
+    let mut times: Times = HashMap::new();
 
 
     let kway = Instant::now();
-    all_to_all_kwayv_i32(world, rank, k, msgs);
-    time.insert("encoding".to_string(), kway.elapsed().as_millis());
+    let a = all_to_all_kwayv_i32(world, rank, k, msgs);
+    times.insert("kway".to_string(), kway.elapsed().as_millis());
 
+    let world = universe.world();
     let intrinsic = Instant::now();
-    all_to_all(world, size, buckets);
-    time.insert("intrinsic".to_string(), intrinsic.elapsed().as_millis());
+    let b = all_to_all(world, size, buckets);
+    times.insert("intrinsic".to_string(), intrinsic.elapsed().as_millis());
 
     if rank == root_rank {
         println!(
-            "{:?}, {:?}, {:?}, {:?}, {:?}",
+            "{:?}, {:?}, {:?}",
             size,
-            sum,
-            times.get(&"total".to_string()).unwrap(),
             times.get(&"kway".to_string()).unwrap(),
             times.get(&"intrinsic".to_string()).unwrap()
-        )
+        );
     }
+
+
 }
