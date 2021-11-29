@@ -47,14 +47,14 @@ fn main() {
         world
             .process_at_rank(root_rank)
             .reduce_into_root(&nleaves, &mut sum, SystemOperation::sum());
-        /// universe size, number of leaves, total runtime, encoding time, sorting time
+        // universe size, number of leaves, total runtime, encoding time, sorting time
         println!(
             "{:?}, {:?}, {:?}, {:?}, {:?}",
             size,
             sum,
-            times.get(&"total".to_string()),
-            times.get(&"encoding".to_string()),
-            times.get(&"sorting".to_string())
+            times.get(&"total".to_string()).unwrap(),
+            times.get(&"encoding".to_string()).unwrap(),
+            times.get(&"sorting".to_string()).unwrap()
         )
     } else {
         world

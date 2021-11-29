@@ -19,7 +19,7 @@ export WORK=/work/e681/e681/skailasa
 
 # Define a scratch directory for the job
 export TEST=${WORK}/distributed-trees/weak
-export SCRATCH=${TEST}/${SLURM_JOBID}
+export SCRATCH=${TEST}/weak_${SLURM_JOBID}
 
 # Create a scratch directory for this run
 mkdir -p ${SCRATCH}
@@ -35,7 +35,7 @@ export DEPTH=10
 # Create a CSV output file for analysis
 export OUTPUT=${SCRATCH}/weak_scaling_${SLURM_JOBID}.csv
 touch ${OUTPUT}
-echo "n_processes, n_leaves, runtime, encoding_time, sorting_time" >> ${OUTPUT}
+echo "n_processes,n_leaves,runtime,encoding_time,sorting_time" >> ${OUTPUT}
 
 # Run jobs
 for i in ${!n_tasks[@]}; do
