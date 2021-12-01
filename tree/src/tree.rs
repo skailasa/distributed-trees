@@ -679,8 +679,9 @@ pub fn send_recv_kway
         comm: UserCommunicator,
         rank: Rank,
         k: Rank,
-        sendbuf: &Vec<i32>,
-        mut recvbuf: &mut Vec<i32>
+        sendbuf: &[i32],
+        mut recvbuf: &mut [i32],
+        displacement: usize
     )-> UserCommunicator
  {
 
@@ -688,27 +689,26 @@ pub fn send_recv_kway
     let m: Rank = p / k;
     let color: Rank = rank/m;
 
-    let size = sendbuf.len() as usize;
-    let mut tmpbuf = vec![0 as i32; size];
-
+    let size = 1;
+    let mut lidx: usize = displacement;
     for i in 1..k {
         mpi::request::scope(|scope| {
 
             let precv: Rank = (m*(modulo(color-i, k))) + (rank % m);
             let psend: Rank = (m*(modulo(color+i, k))) + (rank % m);
 
-            // println!("RANK {:?}, precv {:?} psend {:?}", rank, precv, psend);
-            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut tmpbuf[..]));
+            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut recvbuf[lidx..]));
             let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, &sendbuf[..]));
 
         });
-        recvbuf.append(&mut tmpbuf);
-        tmpbuf = vec![0 as i32; size];
+        lidx += size;
     }
 
     let new_comm = comm.split_by_color(Color::with_value(color));
     new_comm.unwrap()
 }
+
+
 /// Send messages of size 1, in a vector
 pub fn send_recv_kwayv
     (
@@ -717,6 +717,7 @@ pub fn send_recv_kwayv
         k: Rank,
         sendbuf: &Vec<i32>,
         mut recvbuf: &mut Vec<i32>,
+        displacement: usize,
     )-> UserCommunicator
  {
 
@@ -727,7 +728,10 @@ pub fn send_recv_kwayv
     // Size of message being sent
     let send_msg_len = sendbuf.len();
     let local_msg_sizes = vec![send_msg_len as i32];
-    let mut msg_sizes: Vec<i32> = Vec::new();
+    let mut msg_sizes: Vec<i32> = vec![0; p as usize];
+
+    let size = 1;
+    let mut lidx: usize = displacement;
 
     // Find message sizes
     for i in 1..k {
@@ -737,10 +741,10 @@ pub fn send_recv_kwayv
         let mut tmpbuf = vec![0 as i32];
 
         mpi::request::scope(|scope| {
-            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut tmpbuf[..]));
+            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut msg_sizes[lidx..]));
             let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, &local_msg_sizes[..]));
         });
-        msg_sizes.append(&mut tmpbuf);
+        lidx += size;
     }
 
     // Use this to allocate buffers of variable length
@@ -755,9 +759,7 @@ pub fn send_recv_kwayv
             let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut tmpbuf[..]));
             let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, &sendbuf[..]));
         });
-
         recvbuf.append(&mut tmpbuf);
-
     }
 
     let new_comm = comm.split_by_color(Color::with_value(color));
@@ -776,15 +778,21 @@ pub fn all_to_all_kwayv_i32(
 
     let mut i: usize = 1;
     let mut p = comm.size();
-    let mut received = Vec::new();
+    let mut received = vec![0 as i32; 10];
+    let mut lidx: usize = 0;
+    let mut msgidx: usize = 0;
+    let mut ridx: usize = lidx + msg_sizes[msgidx];
 
     while p > 1 {
-        comm = send_recv_kwayv(comm, rank, k, &msgs, &mut received);
+        comm = send_recv_kwayv(comm, rank, k, &msgs, &mut received, lidx);
         p = comm.size();
-        msgs.append(&mut received);
-        received = Vec::new();
+        msgs.extend_from_slice(&received[lidx..ridx]);
+        lidx = ridx;
+        msgidx += 1;
+        ridx += msg_sizes[msgidx];
     }
-    msgs
+
+    received
 }
 
 /// Send messages of size 1
@@ -793,20 +801,23 @@ pub fn all_to_all_kway_i32(
         rank: Rank,
         k: Rank,
         mut sendbuf: Vec<i32>,
-        mut recvbuf: Vec<i32>,
     ) -> Vec<i32>
 {
 
     let mut p = comm.size();
+    let mut recvbuf = vec![0 as i32; (p-1) as usize];
+    let mut lidx: usize = 0;
+    let msgsize: usize = 1;
+    let mut ridx: usize = lidx+msgsize;
 
     while p > 1 {
-        comm = send_recv_kway(comm, rank, k, &sendbuf, &mut recvbuf);
+        comm = send_recv_kway(comm, rank, k, &sendbuf, &mut recvbuf, lidx);
         p = comm.size();
-        sendbuf.append(&mut recvbuf);
-        recvbuf = Vec::new();
+        sendbuf.extend_from_slice(&recvbuf[lidx..ridx]);
+        lidx = ridx;
+        ridx += msgsize;
     }
-
-    sendbuf
+    recvbuf
 }
 
 
