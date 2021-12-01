@@ -709,16 +709,49 @@ pub fn send_recv_kway
 }
 
 
+fn message_sizes(
+    comm: &UserCommunicator,
+    &rank: &Rank,
+    &k: &Rank,
+    sendbuf: &[i32],
+) -> Vec<i32>
+{
+    let p = comm.size();
+    let m: Rank = p / k;
+    let color: Rank = rank/m;
+
+    // Size of message being sent
+    let send_msg_len = sendbuf.len();
+    let local_msg_sizes = vec![send_msg_len as i32];
+    let mut msg_sizes: Vec<i32> = vec![0; (p-1) as usize];
+
+    let size = 1;
+    let mut lidx: usize = 0;
+
+    // Find message sizes
+    for i in 1..k {
+        let precv: Rank = (m*(modulo(color-i, k))) + (rank % m);
+        let psend: Rank = (m*(modulo(color+i, k))) + (rank % m);
+
+        mpi::request::scope(|scope| {
+            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut msg_sizes[lidx..]));
+            let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, &local_msg_sizes[..]));
+        });
+        lidx += size;
+    }
+
+    msg_sizes
+}
+
+
 /// Send messages of size 1, in a vector
 pub fn send_recv_kwayv
     (
         comm: UserCommunicator,
         rank: Rank,
         k: Rank,
-        sendbuf: &Vec<i32>,
-        mut recvbuf: &mut Vec<i32>,
-        displacement: usize,
-    )-> UserCommunicator
+        sendbuf: &[i32],
+    )-> (UserCommunicator, Vec<i32>)
  {
 
     let p = comm.size();
@@ -728,42 +761,33 @@ pub fn send_recv_kwayv
     // Size of message being sent
     let send_msg_len = sendbuf.len();
     let local_msg_sizes = vec![send_msg_len as i32];
-    let mut msg_sizes: Vec<i32> = vec![0; p as usize];
+    let msg_sizes: Vec<i32> = message_sizes(&comm, &rank, &k, sendbuf);
 
-    let size = 1;
-    let mut lidx: usize = displacement;
 
-    // Find message sizes
-    for i in 1..k {
-        let precv: Rank = (m*(modulo(color-i, k))) + (rank % m);
-        let psend: Rank = (m*(modulo(color+i, k))) + (rank % m);
-
-        let mut tmpbuf = vec![0 as i32];
-
-        mpi::request::scope(|scope| {
-            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut msg_sizes[lidx..]));
-            let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, &local_msg_sizes[..]));
-        });
-        lidx += size;
-    }
+    let recvbuf_size: usize = msg_sizes.iter().sum::<i32>() as usize;
 
     // Use this to allocate buffers of variable length
+
+    let mut recvbuf = vec![34 as i32; recvbuf_size];
+    let mut lidx: usize = 0;
+    let mut msg_idx: usize = 0;
+    let mut ridx: usize = 0 ;
+
     for i in 1..k {
         let precv: Rank = (m*(modulo(color-i, k))) + (rank % m);
         let psend: Rank = (m*(modulo(color+i, k))) + (rank % m);
         let size: usize = msg_sizes[(i-1) as usize] as usize;
-
-        let mut tmpbuf = vec![0 as i32; size];
+        ridx = ridx + size;
 
         mpi::request::scope(|scope| {
-            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut tmpbuf[..]));
+            let rreq = WaitGuard::from(comm.process_at_rank(precv).immediate_receive_into(scope, &mut recvbuf[lidx..ridx]));
             let sreq = WaitGuard::from(comm.process_at_rank(psend).immediate_synchronous_send(scope, &sendbuf[..]));
         });
-        recvbuf.append(&mut tmpbuf);
+        lidx = ridx;
     }
 
     let new_comm = comm.split_by_color(Color::with_value(color));
-    new_comm.unwrap()
+    (new_comm.unwrap(), recvbuf)
 }
 
 
@@ -775,24 +799,19 @@ pub fn all_to_all_kwayv_i32(
     mut msgs: Vec<i32>,
 ) -> Vec<i32>
 {
-
     let mut i: usize = 1;
     let mut p = comm.size();
-    let mut received = vec![0 as i32; 10];
-    let mut lidx: usize = 0;
-    let mut msgidx: usize = 0;
-    let mut ridx: usize = lidx + msg_sizes[msgidx];
+    let mut received = vec![0 as i32];
 
     while p > 1 {
-        comm = send_recv_kwayv(comm, rank, k, &msgs, &mut received, lidx);
+        let tmp = send_recv_kwayv(comm, rank, k, &msgs);
+        comm = tmp.0;
+        received = tmp.1;
         p = comm.size();
-        msgs.extend_from_slice(&received[lidx..ridx]);
-        lidx = ridx;
-        msgidx += 1;
-        ridx += msg_sizes[msgidx];
+        msgs.extend_from_slice(&received[..]);
     }
 
-    received
+    msgs
 }
 
 /// Send messages of size 1
